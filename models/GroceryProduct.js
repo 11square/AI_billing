@@ -25,6 +25,18 @@ const GroceryProduct = sequelize.define('GroceryProduct', {
   description: {
     type: DataTypes.TEXT
   },
+  image: {
+    type: DataTypes.TEXT('long')
+  },
+  sourceType: {
+    type: DataTypes.ENUM('own', 'outsourced'),
+    defaultValue: 'own',
+    field: 'source_type'
+  },
+  // Bill of Quantities for own-made products: [{ ingredient, qty, unit }] per 1 unit sold
+  boq: {
+    type: DataTypes.JSON
+  },
   unit: {
     type: DataTypes.STRING(20),
     defaultValue: 'piece'

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Amman Bakes · Café &amp; Bakery POS</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍞</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Serif+Display&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- ========== LOGIN SCREEN ========== -->
+  <div id="login-screen" class="login-screen hidden">
+    <div class="login-art">
+      <div class="login-art-overlay">
+        <div class="login-brand">🍞 Amman Bakes</div>
+        <h1>Freshly baked.<br/>Effortlessly billed.</h1>
+        <p>A complete point-of-sale &amp; billing suite crafted for your café &amp; bakery — menu, orders, voice billing, invoices, credit &amp; reports in one place.</p>
+      </div>
+    </div>
+    <div class="login-panel">
+      <div class="login-card">
+        <div class="login-logo">🍞</div>
+        <h2 id="login-title">Welcome back</h2>
+        <p class="login-sub" id="login-sub">Sign in to start billing</p>
+
+        <form id="login-form" autocomplete="on">
+          <div class="field" id="fld-name" style="display:none">
+            <label>Full name</label>
+            <input type="text" id="login-name" placeholder="e.g. Arun Kumar" />
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="login-email" placeholder="admin@cafe.com" required />
+          </div>
+          <div class="field" id="fld-phone" style="display:none">
+            <label>Phone</label>
+            <input type="tel" id="login-phone" placeholder="98765 43210" />
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="login-password" placeholder="••••••••" required />
+          </div>
+          <div id="login-error" class="login-error hidden"></div>
+          <button type="submit" class="btn btn-primary btn-block" id="login-btn">Sign In</button>
+        </form>
+
+        <p class="login-toggle">
+          <span id="login-toggle-text">New here?</span>
+          <a href="#" id="login-toggle-link">Create an account</a>
+        </p>
+        <div class="login-hint">Demo login — <b>admin@cafe.com</b> / <b>admin123</b></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== APP SHELL ========== -->
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-icon">🍞</span>
+        <span class="brand-text">Amman <em>Bakes</em></span>
+      </div>
+      <nav class="sidebar-nav" id="sidebar-nav">
+        <a href="#dashboard" data-page="dashboard" class="nav-item"><span class="nav-ic" data-icon="dashboard"></span><span>Dashboard</span></a>
+        <a href="#pos" data-page="pos" class="nav-item"><span class="nav-ic" data-icon="pos"></span><span>Billing / POS</span></a>
+        <a href="#invoices" data-page="invoices" class="nav-item"><span class="nav-ic" data-icon="invoices"></span><span>Invoices</span></a>
+        <a href="#menu" data-page="menu" class="nav-item"><span class="nav-ic" data-icon="menu"></span><span>Menu Items</span></a>
+        <a href="#stock" data-page="stock" class="nav-item"><span class="nav-ic" data-icon="stock"></span><span>Stock &amp; PO</span></a>
+        <a href="#customers" data-page="customers" class="nav-item"><span class="nav-ic" data-icon="customers"></span><span>Customers</span></a>
+        <a href="#staff" data-page="staff" class="nav-item"><span class="nav-ic" data-icon="staff"></span><span>Staff &amp; Attendance</span></a>
+        <a href="#reports" data-page="reports" class="nav-item"><span class="nav-ic" data-icon="reports"></span><span>Reports</span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-chip">
+          <div class="user-avatar" id="user-avatar">A</div>
+          <div class="user-meta">
+            <div class="user-name" id="user-name">—</div>
+            <div class="user-role" id="user-role">—</div>
+          </div>
+        </div>
+        <button class="btn-logout" id="btn-logout" title="Sign out"><span data-icon="logout"></span></button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 class="page-title" id="page-title">Dashboard</h1>
+          <div class="page-date" id="page-date"></div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn btn-primary" id="btn-new-order"><span data-icon="plus"></span> New Order</button>
+        </div>
+      </header>
+      <div class="page" id="page"></div>
+    </main>
+  </div>
+
+  <!-- ========== MODAL & TOAST ROOTS ========== -->
+  <div id="modal-root"></div>
+  <div id="toast-root" class="toast-root"></div>
+
+  <!-- ========== PRINT AREA ========== -->
+  <div id="print-area" class="print-area"></div>
+
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/pos.js"></script>
+  <script src="js/voice.js"></script>
+  <script src="js/menu.js"></script>
+  <script src="js/stock.js"></script>
+  <script src="js/invoices.js"></script>
+  <script src="js/customers.js"></script>
+  <script src="js/staff.js"></script>
+  <script src="js/reports.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

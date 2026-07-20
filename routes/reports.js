@@ -5,8 +5,65 @@ const { Invoice, InvoiceItem } = require('../models/Invoice');
 const GroceryProduct = require('../models/GroceryProduct');
 const FertilizerProduct = require('../models/FertilizerProduct');
 const { auth } = require('../middleware/auth');
+const { DailyReport } = require('../models/Report');
+const reportService = require('../services/reportService');
 
 const router = express.Router();
+
+// ===== Generated daily reports =====
+
+// @route   GET /api/reports/schedule — current auto-generation time
+router.get('/schedule', auth, async (req, res) => {
+  try {
+    res.json({ time: await reportService.getReportTime() });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @route   PUT /api/reports/schedule — set auto-generation time (HH:MM)
+router.put('/schedule', auth, async (req, res) => {
+  try {
+    const time = await reportService.setReportTime(req.body.time);
+    res.json({ time });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// @route   POST /api/reports/generate — { date } or { start, end }
+router.post('/generate', auth, async (req, res) => {
+  try {
+    const report = await reportService.generateAndSave(req.body, 'manual');
+    res.status(201).json(report);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// @route   GET /api/reports/generated — list saved reports
+router.get('/generated', auth, async (req, res) => {
+  try {
+    const reports = await DailyReport.findAll({
+      order: [['created_at', 'DESC']],
+      limit: 60
+    });
+    res.json(reports);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @route   GET /api/reports/generated/:id
+router.get('/generated/:id', auth, async (req, res) => {
+  try {
+    const report = await DailyReport.findByPk(req.params.id);
+    if (!report) return res.status(404).json({ message: 'Report not found' });
+    res.json(report);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
 // @route   GET /api/reports/daily
 router.get('/daily', auth, async (req, res) => {
