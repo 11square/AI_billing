@@ -4,6 +4,7 @@ const sequelize = require('../config/database');
 const { Invoice, InvoiceItem } = require('../models/Invoice');
 const GroceryProduct = require('../models/GroceryProduct');
 const FertilizerProduct = require('../models/FertilizerProduct');
+const { Staff, Attendance } = require('../models/Staff');
 const { auth } = require('../middleware/auth');
 const { DailyReport } = require('../models/Report');
 const reportService = require('../services/reportService');
@@ -86,7 +87,6 @@ router.get('/daily', auth, async (req, res) => {
 
     const totalSales = invoices.reduce((sum, inv) => sum + parseFloat(inv.grandTotal), 0);
     const invoiceCount = invoices.length;
-    const gstCollected = invoices.reduce((sum, inv) => sum + parseFloat(inv.gstAmount), 0);
     const cashSales = invoices.filter(i => i.paymentStatus === 'paid').reduce((sum, inv) => sum + parseFloat(inv.paidAmount), 0);
     const creditSales = invoices.filter(i => i.paymentStatus !== 'paid').reduce((sum, inv) => sum + (parseFloat(inv.grandTotal) - parseFloat(inv.paidAmount)), 0);
 
@@ -111,7 +111,6 @@ router.get('/daily', auth, async (req, res) => {
       date: startOfDay,
       totalSales,
       invoiceCount,
-      gstCollected,
       cashSales,
       digitalSales: totalSales - cashSales - creditSales,
       creditSales,
@@ -229,80 +228,27 @@ router.get('/stock', auth, async (req, res) => {
   }
 });
 
-// @route   GET /api/reports/gst
-router.get('/gst', auth, async (req, res) => {
-  try {
-    const { month, year, shopType } = req.query;
-    const targetMonth = month ? parseInt(month) - 1 : new Date().getMonth();
-    const targetYear = year ? parseInt(year) : new Date().getFullYear();
-
-    const startOfMonth = new Date(targetYear, targetMonth, 1);
-    const endOfMonth = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
-
-    let where = {
-      created_at: { [Op.between]: [startOfMonth, endOfMonth] }
-    };
-
-    if (shopType) {
-      where.shopType = shopType;
-    }
-
-    const items = await InvoiceItem.findAll({
-      include: [{
-        model: Invoice,
-        where,
-        attributes: []
-      }],
-      attributes: [
-        'gstRate',
-        [sequelize.fn('SUM', sequelize.col('InvoiceItem.gst_amount')), 'totalGst']
-      ],
-      group: ['gstRate']
-    });
-
-    const gstBreakdown = {
-      gst0: 0,
-      gst5: 0,
-      gst12: 0,
-      gst18: 0,
-      gst28: 0
-    };
-
-    let totalGst = 0;
-
-    items.forEach(item => {
-      const rate = parseFloat(item.gstRate);
-      const gst = parseFloat(item.dataValues.totalGst) || 0;
-      totalGst += gst;
-
-      if (rate === 0) gstBreakdown.gst0 = gst;
-      else if (rate === 5) gstBreakdown.gst5 = gst;
-      else if (rate === 12) gstBreakdown.gst12 = gst;
-      else if (rate === 18) gstBreakdown.gst18 = gst;
-      else if (rate === 28) gstBreakdown.gst28 = gst;
-    });
-
-    res.json({
-      month: targetMonth + 1,
-      year: targetYear,
-      totalGst,
-      ...gstBreakdown
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// @route   GET /api/reports/dashboard
+// @route   GET /api/reports/dashboard?date=YYYY-MM-DD
 router.get('/dashboard', auth, async (req, res) => {
   try {
-    const { shopType } = req.query;
-    const today = new Date();
-    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    const { shopType, date } = req.query;
 
-    // Get 7-day range for weekly data
-    const weekAgo = new Date(today);
+    // Anchor "today" to the caller-supplied date if present, else server-local today.
+    // Parsed as YYYY-MM-DD in local time (not UTC) so a picked date maps to the shop's day.
+    let anchor;
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const [y, m, d] = date.split('-').map(Number);
+      anchor = new Date(y, m - 1, d);
+    } else {
+      anchor = new Date();
+    }
+    const startOfToday = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+    const endOfToday = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 23, 59, 59, 999);
+    const pad = n => String(n).padStart(2, '0');
+    const dateStr = `${anchor.getFullYear()}-${pad(anchor.getMonth() + 1)}-${pad(anchor.getDate())}`;
+
+    // Get 7-day range for weekly data (ending on the selected day)
+    const weekAgo = new Date(anchor);
     weekAgo.setDate(weekAgo.getDate() - 6);
     const startOfWeek = new Date(weekAgo.getFullYear(), weekAgo.getMonth(), weekAgo.getDate());
 
@@ -343,8 +289,8 @@ router.get('/dashboard', auth, async (req, res) => {
       }
     }
 
-    // This month stats
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    // This month stats (relative to selected anchor date)
+    const startOfMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
     const monthInvoices = await Invoice.findAll({
       where: { ...where, created_at: { [Op.between]: [startOfMonth, endOfToday] } },
       include: [{
@@ -431,7 +377,65 @@ router.get('/dashboard', auth, async (req, res) => {
       attributes: ['id', 'invoiceNumber', 'customerName', 'grandTotal', 'paymentStatus', 'created_at']
     });
 
+    // ----- Staff attendance for the selected day -----
+    // Counts are per-staff (not per-shift-row). "Absent" folds together the
+    // `absent` and `week_off` statuses; `leave` is treated as sick leave.
+    // Half-day = staff whose default shift is 'both' but who were present in
+    // exactly one of the two shifts on this date.
+    let attendance = {
+      morningPresent: 0, morningAbsent: 0,
+      eveningPresent: 0, eveningAbsent: 0,
+      halfDays: 0, sickLeaves: 0
+    };
+    try {
+      const activeStaff = await Staff.findAll({ where: { isActive: true } });
+      const dayRecords = await Attendance.findAll({ where: { date: dateStr } });
+
+      const byKey = {};
+      for (const r of dayRecords) byKey[`${r.staffId}|${r.shift}`] = r.status;
+
+      const staffWithLeave = new Set();
+      let halfDayCount = 0;
+
+      for (const s of activeStaff) {
+        const morningStatus = byKey[`${s.id}|morning`] || null;
+        const eveningStatus = byKey[`${s.id}|evening`] || null;
+
+        const isPresent = st => st === 'present';
+        const isAbsent = st => st === 'absent' || st === 'week_off';
+
+        // Column counts only include staff scheduled for that shift.
+        const worksMorning = s.defaultShift === 'morning' || s.defaultShift === 'both';
+        const worksEvening = s.defaultShift === 'evening' || s.defaultShift === 'both';
+
+        if (worksMorning) {
+          if (isPresent(morningStatus)) attendance.morningPresent++;
+          else if (isAbsent(morningStatus)) attendance.morningAbsent++;
+        }
+        if (worksEvening) {
+          if (isPresent(eveningStatus)) attendance.eveningPresent++;
+          else if (isAbsent(eveningStatus)) attendance.eveningAbsent++;
+        }
+
+        if (morningStatus === 'leave' || eveningStatus === 'leave') {
+          staffWithLeave.add(s.id);
+        }
+
+        // Half-day: both-shift staff, present in exactly one shift
+        if (s.defaultShift === 'both') {
+          const p = (isPresent(morningStatus) ? 1 : 0) + (isPresent(eveningStatus) ? 1 : 0);
+          if (p === 1) halfDayCount++;
+        }
+      }
+
+      attendance.halfDays = halfDayCount;
+      attendance.sickLeaves = staffWithLeave.size;
+    } catch (e) {
+      // If attendance tables aren't ready yet, fall back to zeros silently.
+    }
+
     res.json({
+      date: dateStr,
       todaySales,
       todayProfit,
       todayInvoiceCount,
@@ -440,6 +444,7 @@ router.get('/dashboard', auth, async (req, res) => {
       monthSales,
       monthProfit,
       monthInvoiceCount: monthInvoices.length,
+      attendance,
       weeklyChart: Object.entries(dailySales).map(([day, amount]) => ({ day, amount })),
       recentInvoices: recentInvoices.map(inv => ({
         id: inv.id,

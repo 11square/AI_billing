@@ -94,18 +94,13 @@ router.post('/', auth, async (req, res) => {
   try {
     const { shopType, customerId, customerName, customerPhone, items, discount, payments, notes } = req.body;
 
-    // Calculate totals
+    // Calculate totals (GST removed — grandTotal = subTotal - discount)
     let subTotal = 0;
-    let gstAmount = 0;
-
     for (const item of items) {
-      const itemTotal = item.quantity * item.unitPrice;
-      const itemGst = itemTotal * (item.gstRate / 100);
-      subTotal += itemTotal;
-      gstAmount += itemGst;
+      subTotal += item.quantity * item.unitPrice;
     }
 
-    const grandTotal = subTotal + gstAmount - (discount || 0);
+    const grandTotal = subTotal - (discount || 0);
 
     // Calculate paid amount
     let paidAmount = 0;
@@ -133,7 +128,7 @@ router.post('/', auth, async (req, res) => {
       customerPhone,
       subTotal,
       discount: discount || 0,
-      gstAmount,
+      gstAmount: 0,
       grandTotal,
       paidAmount,
       paymentStatus,
@@ -141,10 +136,9 @@ router.post('/', auth, async (req, res) => {
       createdBy: req.user.id
     }, { transaction: t });
 
-    // Create invoice items and update stock
+    // Create invoice items and update stock (no GST — totalPrice = qty × unitPrice)
     for (const item of items) {
-      const itemGst = (item.quantity * item.unitPrice) * (item.gstRate / 100);
-      const totalPrice = (item.quantity * item.unitPrice) + itemGst;
+      const totalPrice = item.quantity * item.unitPrice;
 
       await InvoiceItem.create({
         invoiceId: invoice.id,
@@ -154,8 +148,8 @@ router.post('/', auth, async (req, res) => {
         quantity: item.quantity,
         unit: item.unit,
         unitPrice: item.unitPrice,
-        gstRate: item.gstRate,
-        gstAmount: itemGst,
+        gstRate: 0,
+        gstAmount: 0,
         totalPrice
       }, { transaction: t });
 

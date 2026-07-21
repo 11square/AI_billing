@@ -107,7 +107,7 @@ const Ui = {
         <div class="r-center">
           <div class="r-brand">🍞 AMMAN BAKES</div>
           <div>Café &amp; Bakery</div>
-          <div>Ph: 98765 43210 · GSTIN: 33ABCDE1234F1Z5</div>
+          <div>Ph: 98765 43210</div>
         </div>
         <hr/>
         <table>
@@ -120,7 +120,6 @@ const Ui = {
         <hr/>
         <table>
           <tr><td>Subtotal</td><td></td><td class="r-r">${this.fmt(inv.subTotal)}</td></tr>
-          <tr><td>GST</td><td></td><td class="r-r">${this.fmt(inv.gstAmount)}</td></tr>
           ${parseFloat(inv.discount) > 0 ? `<tr><td>Discount</td><td></td><td class="r-r">- ${this.fmt(inv.discount)}</td></tr>` : ''}
           <tr class="r-tot"><td class="r-tot">TOTAL</td><td></td><td class="r-r r-tot">${this.fmt(inv.grandTotal)}</td></tr>
           ${payments}

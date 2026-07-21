@@ -342,12 +342,11 @@ const Stock = {
       <div class="card" style="padding:8px 6px">
         ${this.vendors.length ? `
         <table class="tbl">
-          <thead><tr><th>Vendor</th><th>Contact</th><th>GSTIN</th><th style="text-align:right">Actions</th></tr></thead>
+          <thead><tr><th>Vendor</th><th>Contact</th><th style="text-align:right">Actions</th></tr></thead>
           <tbody>${this.vendors.map(v => `
             <tr>
               <td><b>${Ui.esc(v.name)}</b></td>
               <td>${Ui.esc(v.phone || '—')}${v.email ? `<div class="muted">${Ui.esc(v.email)}</div>` : ''}</td>
-              <td class="muted">${Ui.esc(v.gstin || '—')}</td>
               <td style="text-align:right;white-space:nowrap">
                 <button class="btn btn-ghost btn-sm" data-edit="${v.id}">Edit</button>
                 <button class="btn btn-danger btn-sm" data-del="${v.id}">🗑</button>
@@ -377,7 +376,6 @@ const Stock = {
           <div class="field"><label>Phone</label><input id="vf-phone" value="${Ui.esc(v?.phone || '')}"/></div>
           <div class="field"><label>Email</label><input id="vf-email" value="${Ui.esc(v?.email || '')}"/></div>
         </div>
-        <div class="field"><label>GSTIN</label><input id="vf-gstin" value="${Ui.esc(v?.gstin || '')}"/></div>
         <div class="field"><label>Address</label><textarea id="vf-addr" rows="2">${Ui.esc(v?.address || '')}</textarea></div>`,
       foot: `<button class="btn btn-ghost" id="vf-cancel">Cancel</button><button class="btn btn-primary" id="vf-save">${isEdit ? 'Save' : 'Add Vendor'}</button>`
     });
@@ -387,7 +385,6 @@ const Stock = {
         name: m.el.querySelector('#vf-name').value.trim(),
         phone: m.el.querySelector('#vf-phone').value.trim() || null,
         email: m.el.querySelector('#vf-email').value.trim() || null,
-        gstin: m.el.querySelector('#vf-gstin').value.trim() || null,
         address: m.el.querySelector('#vf-addr').value.trim() || null
       };
       if (!body.name) { Ui.toast('Vendor name is required', 'error'); return; }

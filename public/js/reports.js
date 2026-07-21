@@ -8,7 +8,6 @@ const Reports = {
         <button class="rep-tab ${this.tab === 'generated' ? 'active' : ''}" data-t="generated">🗂️ Daily Reports</button>
         <button class="rep-tab ${this.tab === 'daily' ? 'active' : ''}" data-t="daily">📅 Day Analytics</button>
         <button class="rep-tab ${this.tab === 'monthly' ? 'active' : ''}" data-t="monthly">🗓️ Monthly</button>
-        <button class="rep-tab ${this.tab === 'gst' ? 'active' : ''}" data-t="gst">🧾 GST</button>
         <button class="rep-tab ${this.tab === 'stock' ? 'active' : ''}" data-t="stock">📦 Stock</button>
       </div>
       <div id="rep-body"><div class="loader"></div></div>`;
@@ -27,7 +26,6 @@ const Reports = {
     if (this.tab === 'generated') this.generated(box);
     else if (this.tab === 'daily') this.daily(box);
     else if (this.tab === 'monthly') this.monthly(box);
-    else if (this.tab === 'gst') this.gst(box);
     else this.stock(box);
   },
 
@@ -135,7 +133,6 @@ const Reports = {
           <div class="tot-row"><span>Total orders</span><span><b>${d.totalInvoices}</b>${d.cancelledInvoices ? ` <span class="muted">(+${d.cancelledInvoices} cancelled)</span>` : ''}</span></div>
           <div class="tot-row"><span>Total items billed</span><span><b>${d.totalItemsBilled}</b></span></div>
           <div class="tot-row"><span>Subtotal</span><span>${Ui.fmt(d.subTotal)}</span></div>
-          <div class="tot-row"><span>GST</span><span>${Ui.fmt(d.gstAmount)}</span></div>
           <div class="tot-row"><span>Discount</span><span>− ${Ui.fmt(d.discount)}</span></div>
           <div class="tot-row grand"><span>Total billed</span><span>${Ui.fmt(d.totalBilled)}</span></div>
           <div class="tot-row"><span>💰 Amount collected</span><span><b>${Ui.fmt(d.amountCollected)}</b> <span class="muted">(cash ${Ui.fmt(d.paymentBreakdown.cash)} · upi ${Ui.fmt(d.paymentBreakdown.upi)} · card ${Ui.fmt(d.paymentBreakdown.card)})</span></span></div>
@@ -190,7 +187,6 @@ const Reports = {
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-ic" style="background:var(--green-soft)">💰</div><div class="stat-val">${Ui.fmt(r.totalSales)}</div><div class="stat-lbl">Total Sales</div></div>
         <div class="stat-card"><div class="stat-ic" style="background:var(--blue-soft)">🧾</div><div class="stat-val">${r.invoiceCount}</div><div class="stat-lbl">Orders</div></div>
-        <div class="stat-card"><div class="stat-ic" style="background:var(--brand-soft)">🏛️</div><div class="stat-val">${Ui.fmt(r.gstCollected)}</div><div class="stat-lbl">GST Collected</div></div>
         <div class="stat-card"><div class="stat-ic" style="background:var(--amber-soft)">📒</div><div class="stat-val">${Ui.fmt(r.creditSales)}</div><div class="stat-lbl">Credit Sales</div></div>
       </div>
       <div class="card"><div class="card-title">Top sellers</div>${top}</div>`;
@@ -219,39 +215,6 @@ const Reports = {
         <div class="stat-card"><div class="stat-ic" style="background:var(--blue-soft)">🧾</div><div class="stat-val">${r.totalInvoices}</div><div class="stat-lbl">Orders</div></div>
         <div class="stat-card"><div class="stat-ic" style="background:var(--brand-soft)">📊</div><div class="stat-val">${Ui.fmt(r.avgPerDay)}</div><div class="stat-lbl">Avg / Day</div></div>
         <div class="stat-card"><div class="stat-ic" style="background:var(--red-soft)">📒</div><div class="stat-val">${Ui.fmt(r.creditPending)}</div><div class="stat-lbl">Credit Pending</div></div>
-      </div>`;
-  },
-
-  async gst(box, month, year) {
-    const now = new Date();
-    month = month || now.getMonth() + 1;
-    year = year || now.getFullYear();
-    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    box.innerHTML = `
-      <div class="toolbar">
-        <select class="select" id="rg-month">${months.map((mn, i) => `<option value="${i + 1}" ${i + 1 === +month ? 'selected' : ''}>${mn}</option>`).join('')}</select>
-        <select class="select" id="rg-year">${[year - 2, year - 1, year].map(y => `<option ${y === +year ? 'selected' : ''}>${y}</option>`).join('')}</select>
-      </div>
-      <div id="rg-out"><div class="loader"></div></div>`;
-    const reload = () => this.gst(box, box.querySelector('#rg-month').value, box.querySelector('#rg-year').value);
-    box.querySelector('#rg-month').addEventListener('change', reload);
-    box.querySelector('#rg-year').addEventListener('change', reload);
-    let r;
-    try { r = await Api.get(`/reports/gst?shopType=grocery&month=${month}&year=${year}`); }
-    catch (e) { box.querySelector('#rg-out').innerHTML = `<div class="empty-state">${Ui.esc(e.message)}</div>`; return; }
-    const rows = [['0%', r.gst0], ['5%', r.gst5], ['12%', r.gst12], ['18%', r.gst18], ['28%', r.gst28]];
-    const max = Math.max(...rows.map(x => x[1]), 1);
-    box.querySelector('#rg-out').innerHTML = `
-      <div class="stat-grid" style="grid-template-columns:minmax(180px,260px)">
-        <div class="stat-card"><div class="stat-ic" style="background:var(--brand-soft)">🏛️</div><div class="stat-val">${Ui.fmt(r.totalGst)}</div><div class="stat-lbl">Total GST Collected</div></div>
-      </div>
-      <div class="card"><div class="card-title">GST slab breakdown</div>
-        ${rows.map(([lbl, val]) => `
-          <div class="gst-bar-row">
-            <span class="g-lbl">GST ${lbl}</span>
-            <div class="g-track"><div class="g-fill" style="width:${(val / max) * 100}%"></div></div>
-            <span class="g-val">${Ui.fmt(val)}</span>
-          </div>`).join('')}
       </div>`;
   },
 

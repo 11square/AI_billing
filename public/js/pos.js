@@ -141,15 +141,14 @@ const Pos = {
   },
 
   totals() {
-    let sub = 0, gst = 0, count = 0;
+    // GST removed — grand = subtotal - discount
+    let sub = 0, count = 0;
     for (const { product, qty } of Object.values(this.cart)) {
-      const line = qty * parseFloat(product.sellingPrice);
-      sub += line;
-      gst += line * (parseFloat(product.gstRate) / 100);
+      sub += qty * parseFloat(product.sellingPrice);
       count += qty;
     }
-    const disc = Math.min(this.discount || 0, sub + gst);
-    return { sub, gst, disc, grand: Math.max(sub + gst - disc, 0), count };
+    const disc = Math.min(this.discount || 0, sub);
+    return { sub, disc, grand: Math.max(sub - disc, 0), count };
   },
 
   renderCart() {
@@ -166,7 +165,7 @@ const Pos = {
           ${Ui.imgTag(p.image, p.category, '')}
           <div class="cl-info">
             <div class="cl-name">${Ui.esc(p.name)}</div>
-            <div class="cl-price">${Ui.fmt(p.sellingPrice)} · GST ${parseFloat(p.gstRate)}%</div>
+            <div class="cl-price">${Ui.fmt(p.sellingPrice)}</div>
           </div>
           <div class="qty-ctrl">
             <button data-id="${p.id}" data-d="-1">−</button>
@@ -183,7 +182,6 @@ const Pos = {
     const t = this.totals();
     totEl.innerHTML = `
       <div class="tot-row"><span>Subtotal (${t.count} items)</span><span>${Ui.fmt(t.sub)}</span></div>
-      <div class="tot-row"><span>GST</span><span>${Ui.fmt(t.gst)}</span></div>
       <div class="tot-row"><span>Discount ₹</span><input class="disc-input" id="disc-input" type="number" min="0" value="${this.discount || ''}" placeholder="0"/></div>
       <div class="tot-row grand"><span>Total</span><span>${Ui.fmt(t.grand)}</span></div>`;
     totEl.querySelector('#disc-input').addEventListener('change', e => {
@@ -289,7 +287,7 @@ const Pos = {
           payments,
           items: Object.values(this.cart).map(({ product: p, qty }) => ({
             productId: p.id, productName: p.name, quantity: qty, unit: p.unit,
-            unitPrice: parseFloat(p.sellingPrice), gstRate: parseFloat(p.gstRate)
+            unitPrice: parseFloat(p.sellingPrice), gstRate: 0
           }))
         };
         const inv = await Api.post('/invoices', body);

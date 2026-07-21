@@ -33,11 +33,10 @@ async function computeSummary(start, end) {
   const active = invoices.filter(i => i.paymentStatus !== 'cancelled');
   const cancelledCount = invoices.length - active.length;
 
-  // headline totals (billed in period)
-  let subTotal = 0, gstAmount = 0, discount = 0, grandTotal = 0, creditGiven = 0;
+  // headline totals (billed in period) — GST removed
+  let subTotal = 0, discount = 0, grandTotal = 0, creditGiven = 0;
   for (const inv of active) {
     subTotal += parseFloat(inv.subTotal);
-    gstAmount += parseFloat(inv.gstAmount);
     discount += parseFloat(inv.discount);
     grandTotal += parseFloat(inv.grandTotal);
     if (inv.paymentStatus !== 'paid') {
@@ -116,7 +115,7 @@ async function computeSummary(start, end) {
     cancelledInvoices: cancelledCount,
     totalItemsBilled,
     subTotal: round(subTotal),
-    gstAmount: round(gstAmount),
+    gstAmount: 0,
     discount: round(discount),
     totalBilled: round(grandTotal),
     amountCollected: round(amountCollected),

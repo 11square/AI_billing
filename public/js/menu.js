@@ -90,8 +90,6 @@ const Menu = {
           <div class="field"><label>Selling price ₹ *</label><input id="mf-price" type="number" min="0" step="0.01" value="${p?.sellingPrice || ''}"/></div>
           <div class="field"><label>MRP ₹</label><input id="mf-mrp" type="number" min="0" step="0.01" value="${p?.mrp || ''}"/></div>
           <div class="field"><label>Cost price ₹ *</label><input id="mf-cost" type="number" min="0" step="0.01" value="${p?.purchasePrice || ''}"/></div>
-          <div class="field"><label>GST %</label>
-            <select id="mf-gst">${[0,5,12,18,28].map(g => `<option value="${g}" ${parseFloat(p?.gstRate ?? 5) === g ? 'selected' : ''}>${g}%</option>`).join('')}</select></div>
           ${isEdit ? '' : `<div class="field"><label>Opening stock</label><input id="mf-stock" type="number" min="0" value="0"/></div>`}
           <div class="field"><label>Low-stock alert at</label><input id="mf-minstock" type="number" min="0" value="${p?.minStock ?? 10}"/></div>
           <div class="field ${isEdit ? '' : 'full'}"><label>Barcode (optional)</label><input id="mf-barcode" value="${Ui.esc(p?.barcode || '')}"/></div>
@@ -151,7 +149,7 @@ const Menu = {
         sellingPrice: parseFloat($('#mf-price').value),
         mrp: parseFloat($('#mf-mrp').value) || parseFloat($('#mf-price').value),
         purchasePrice: parseFloat($('#mf-cost').value),
-        gstRate: parseFloat($('#mf-gst').value),
+        gstRate: 0,
         minStock: parseInt($('#mf-minstock').value) || 0,
         barcode: $('#mf-barcode').value.trim() || undefined,
         image: $('#mf-img').value.trim() || null,
