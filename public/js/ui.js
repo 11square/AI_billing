@@ -37,6 +37,7 @@ const Ui = {
     customers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
     reports: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
     stock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>',
+    po: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6l1 3H8l1-3z"/><path d="M4 5h16v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5z"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/></svg>',
     staff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><rect x="16" y="3" width="6" height="6" rx="1"/><path d="M19 13v8"/><path d="M22 16h-6"/></svg>',
     logout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
     plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
@@ -91,19 +92,43 @@ const Ui = {
     });
   },
 
+  // ---------- receipt localisation ----------
+  // Shop-wide default language, persisted so cashiers don't set it every time.
+  // Only affects the ITEM NAME column of the receipt — every other label
+  // (Bill No, Date, Customer, Subtotal, TOTAL, Paid, Thank you, tagline,
+  // shop name) stays in English regardless of the toggle.
+  getLang() {
+    return localStorage.getItem('cafe_lang') || 'en';
+  },
+  setLang(lang) {
+    if (lang !== 'en' && lang !== 'ta') return;
+    localStorage.setItem('cafe_lang', lang);
+  },
+
   // ---------- receipt ----------
-  receiptHtml(inv) {
+  // lang defaults to the shop-wide setting; callers can override for one print.
+  receiptHtml(inv, lang) {
+    const useTa = (lang || this.getLang()) === 'ta';
+    const langCls = useTa ? 'lang-ta-items' : 'lang-en';
+    // Pick the Tamil-script name only for the item line — everything else on
+    // the receipt is permanently English. Falls back to the English name if
+    // the shop hasn't set a Tamil name for that product.
+    const itemLabel = it => useTa && it.productNameTamil ? it.productNameTamil : it.productName;
     const items = (inv.items || []).map(it => `
-      <tr><td colspan="3">${this.esc(it.productName)}</td></tr>
       <tr>
-        <td class="muted">&nbsp;&nbsp;${it.quantity} × ${this.fmt(it.unitPrice)}</td>
+        <td${useTa && it.productNameTamil ? ' class="ta-name"' : ''}>${this.esc(itemLabel(it))}</td>
         <td></td>
         <td class="r-r">${this.fmt(it.totalPrice)}</td>
+      </tr>
+      <tr>
+        <td class="muted" colspan="3">&nbsp;&nbsp;${it.quantity} × ${this.fmt(it.unitPrice)}</td>
       </tr>`).join('');
-    const payments = (inv.payments || []).map(p => `<tr><td>Paid (${this.esc(p.method).toUpperCase()})</td><td></td><td class="r-r">${this.fmt(p.amount)}</td></tr>`).join('');
+    const payments = (inv.payments || []).map(p =>
+      `<tr><td>Paid (${this.esc(p.method).toUpperCase()})</td><td></td><td class="r-r">${this.fmt(p.amount)}</td></tr>`
+    ).join('');
     const due = parseFloat(inv.grandTotal) - parseFloat(inv.paidAmount || 0);
     return `
-      <div class="receipt">
+      <div class="receipt ${langCls}">
         <div class="r-center">
           <div class="r-brand">🍞 AMMAN BAKES</div>
           <div>Café &amp; Bakery</div>
@@ -129,9 +154,25 @@ const Ui = {
         <div class="r-center">Thank you! Visit again ☕</div>
       </div>`;
   },
-  printReceipt(inv) {
-    document.getElementById('print-area').innerHTML = this.receiptHtml(inv);
+  printReceipt(inv, lang) {
+    document.getElementById('print-area').innerHTML = this.receiptHtml(inv, lang);
     window.print();
+  },
+  // Builds the language toggle radio + rewire helper used by receipt preview modals.
+  attachLangToggle(modalEl, inv, currentLang) {
+    const rerender = (newLang) => {
+      this.setLang(newLang);
+      const host = modalEl.querySelector('.receipt-modal-wrap');
+      if (host) host.innerHTML = this.receiptHtml(inv, newLang);
+      // Re-bind the language chips inside the new markup (they live outside .receipt, so they survive)
+    };
+    modalEl.querySelectorAll('[data-lang]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const lang = btn.dataset.lang;
+        modalEl.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('active', b === btn));
+        rerender(lang);
+      });
+    });
   },
   printHtml(html) {
     document.getElementById('print-area').innerHTML = `<div class="print-doc">${html}</div>`;

@@ -108,6 +108,7 @@ async function computeSummary(start, end) {
     .map(x => ({ name: x.name, qty: x.qty, amount: +x.amount.toFixed(2) }));
 
   const round = (n) => +n.toFixed(2);
+
   return {
     periodStart: start,
     periodEnd: end,
@@ -123,6 +124,7 @@ async function computeSummary(start, end) {
     paymentBreakdown: Object.fromEntries(Object.entries(byMethod).map(([k, v]) => [k, round(v)])),
     own: { qty: own.qty, amount: round(own.amount), items: own.items },
     outsourced: { qty: outsourced.qty, amount: round(outsourced.amount), items: outsourced.items },
+    // Legacy free-text BOQ (kept for older reports)
     boqConsumption: [...boqTotals.values()]
       .map(b => ({ ...b, qty: round(b.qty) }))
       .sort((a, b) => a.ingredient.localeCompare(b.ingredient)),

@@ -7,7 +7,7 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍞</text></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Serif+Display&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Serif+Display&family=Noto+Sans+Tamil:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -69,7 +69,8 @@
         <a href="#pos" data-page="pos" class="nav-item"><span class="nav-ic" data-icon="pos"></span><span>Billing / POS</span></a>
         <a href="#invoices" data-page="invoices" class="nav-item"><span class="nav-ic" data-icon="invoices"></span><span>Invoices</span></a>
         <a href="#menu" data-page="menu" class="nav-item"><span class="nav-ic" data-icon="menu"></span><span>Menu Items</span></a>
-        <a href="#stock" data-page="stock" class="nav-item"><span class="nav-ic" data-icon="stock"></span><span>Stock &amp; PO</span></a>
+        <a href="#stock" data-page="stock" class="nav-item"><span class="nav-ic" data-icon="stock"></span><span>Stock</span></a>
+        <a href="#po" data-page="po" class="nav-item"><span class="nav-ic" data-icon="po"></span><span>Purchase Orders</span></a>
         <a href="#customers" data-page="customers" class="nav-item"><span class="nav-ic" data-icon="customers"></span><span>Customers</span></a>
         <a href="#staff" data-page="staff" class="nav-item"><span class="nav-ic" data-icon="staff"></span><span>Staff &amp; Attendance</span></a>
         <a href="#reports" data-page="reports" class="nav-item"><span class="nav-ic" data-icon="reports"></span><span>Reports</span></a>
@@ -92,9 +93,7 @@
           <h1 class="page-title" id="page-title">Dashboard</h1>
           <div class="page-date" id="page-date"></div>
         </div>
-        <div class="topbar-right">
-          <button class="btn btn-primary" id="btn-new-order"><span data-icon="plus"></span> New Order</button>
-        </div>
+        <div class="topbar-right"></div>
       </header>
       <div class="page" id="page"></div>
     </main>
@@ -114,6 +113,7 @@
   <script src="js/voice.js"></script>
   <script src="js/menu.js"></script>
   <script src="js/stock.js"></script>
+  <script src="js/rawmaterials.js"></script>
   <script src="js/invoices.js"></script>
   <script src="js/customers.js"></script>
   <script src="js/staff.js"></script>

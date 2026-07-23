@@ -101,6 +101,12 @@ const InvoiceItem = sequelize.define('InvoiceItem', {
     allowNull: false,
     field: 'product_name'
   },
+  productNameTamil: {
+    // Snapshot of the product's Tamil-script name at billing time. Falls back
+    // to productName when the shop hasn't set a Tamil name for the item.
+    type: DataTypes.STRING(200),
+    field: 'product_name_tamil'
+  },
   quantity: {
     type: DataTypes.INTEGER,
     allowNull: false

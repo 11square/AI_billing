@@ -81,15 +81,22 @@ const Invoices = {
   },
 
   view(inv) {
+    const curLang = Ui.getLang();
     const m = Ui.modal({
       title: `Invoice · ${Ui.esc(inv.invoiceNumber)}`,
-      body: `<div class="receipt-modal-wrap">${Ui.receiptHtml(inv)}</div>`,
+      body: `
+        <div class="lang-toggle">
+          <button class="lang-chip ${curLang === 'en' ? 'active' : ''}" data-lang="en">English</button>
+          <button class="lang-chip ${curLang === 'ta' ? 'active' : ''}" data-lang="ta">தமிழ்</button>
+        </div>
+        <div class="receipt-modal-wrap">${Ui.receiptHtml(inv)}</div>`,
       foot: `<button class="btn btn-ghost" id="iv-close">Close</button>
              ${(inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'partial') ? '<button class="btn btn-green" id="iv-pay">Record Payment</button>' : ''}
              <button class="btn btn-primary" id="iv-print"><span data-icon="print"></span> Print</button>`
     });
     m.el.querySelector('#iv-close').addEventListener('click', m.close);
-    m.el.querySelector('#iv-print').addEventListener('click', () => Ui.printReceipt(inv));
+    m.el.querySelector('#iv-print').addEventListener('click', () => Ui.printReceipt(inv, Ui.getLang()));
+    Ui.attachLangToggle(m.el, inv, curLang);
     const payBtn = m.el.querySelector('#iv-pay');
     if (payBtn) payBtn.addEventListener('click', () => { m.close(); this.recordPayment(inv); });
   },

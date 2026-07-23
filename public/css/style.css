@@ -131,6 +131,50 @@ a { color: inherit; text-decoration: none; }
 .dash-date-pick input[type=date]:focus { color: var(--brand); }
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 0; }
 .dash-section > .stat-grid { margin-bottom: 0; }
+/* Business snapshot row — 4 boxes in a straight line on desktop. */
+.stat-grid.stat-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 900px) { .stat-grid.stat-grid-4 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); } }
+/* Make the low-stock card look like a link, not a static card. */
+a.stat-card.low-stock-card { text-decoration: none; color: inherit; display: block; transition: transform .12s, box-shadow .12s; }
+a.stat-card.low-stock-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+
+/* Metric card period switcher (Profit / Orders / Sales) */
+/* Higher-specificity selector so this beats the later `.stat-card {overflow:hidden}` rule
+   in the cascade — otherwise the absolute-positioned dropdown menu gets clipped. */
+.stat-card.metric-card { position: relative; overflow: visible; }
+.stat-grid { overflow: visible; }
+.metric-card .metric-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.metric-card .metric-toggle {
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2);
+  border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 700;
+  cursor: pointer; font-family: inherit;
+  opacity: .7; transition: opacity .15s, background .15s;
+}
+.metric-card:hover .metric-toggle { opacity: 1; background: var(--brand-soft); color: var(--brand); }
+.metric-card .metric-menu {
+  position: absolute; top: 100%; right: 8px; z-index: 20;
+  border-top: 6px solid transparent;
+  background: var(--surface); border: 1px solid var(--line); border-top: 6px solid transparent; border-radius: 12px;
+  box-shadow: var(--shadow-lg); padding: 8px 8px; min-width: 170px;
+  flex-direction: column; gap: 2px;
+  background-clip: padding-box;
+}
+/* When JS sets `hidden`, force display:none — an explicit `display` rule
+   above would otherwise override the attribute default and leave the menu
+   permanently visible. Show as flex only when NOT hidden. */
+.metric-card .metric-menu:not([hidden]) { display: flex; }
+.metric-card .metric-menu[hidden] { display: none !important; }
+.metric-card .metric-menu-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--ink-3); padding: 4px 8px 6px; }
+.metric-card .metric-opt {
+  border: none; background: transparent; text-align: left; padding: 7px 10px; border-radius: 8px;
+  font-weight: 700; font-size: 12.5px; color: var(--ink-2); cursor: pointer; font-family: inherit;
+}
+.metric-card .metric-opt:hover { background: var(--surface-2); color: var(--brand); }
+.metric-card .metric-opt.active { background: var(--brand-soft); color: var(--brand); }
+.metric-card .stat-val.metric-loading { opacity: .4; transition: opacity .2s; }
+
+/* Low-stock card gets a red left accent so it stands out */
+.stat-card.low-stock-card { border-left: 3px solid var(--red); }
 .stat-card { background: var(--surface); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); border: 1px solid var(--line); position: relative; overflow: hidden; }
 .stat-card .stat-ic { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 19px; margin-bottom: 12px; }
 .stat-card .stat-val { font-size: 22px; font-weight: 800; letter-spacing: -.3px; }
@@ -266,6 +310,19 @@ a { color: inherit; text-decoration: none; }
 
 /* ================= Receipt ================= */
 .receipt { font-family: 'Courier New', monospace; background: #fff; color: #111; width: 300px; margin: 0 auto; padding: 18px 16px; font-size: 12px; line-height: 1.5; }
+/* Tamil font ONLY applies to item-name cells when the shop set a Tamil name;
+   the rest of the receipt (labels, totals, thank-you) stays in the mono
+   English font so the receipt remains bilingual by-item, not by-line. */
+.receipt .ta-name { font-family: 'Noto Sans Tamil', 'Courier New', monospace; line-height: 1.6; }
+
+/* Language toggle above the receipt preview */
+.lang-toggle { display: flex; gap: 6px; margin-bottom: 12px; padding: 4px; background: var(--surface-2); border-radius: 12px; border: 1px solid var(--line); width: fit-content; }
+.lang-chip {
+  padding: 6px 14px; border-radius: 8px; border: none; background: transparent;
+  font-weight: 700; font-size: 12.5px; color: var(--ink-2); cursor: pointer; font-family: inherit;
+}
+.lang-chip.active { background: var(--brand-2); color: #fff; box-shadow: 0 3px 8px -3px rgba(124,74,33,.5); }
+.lang-chip[data-lang="ta"] { font-family: 'Noto Sans Tamil', inherit; }
 .receipt .r-center { text-align: center; }
 .receipt .r-brand { font-size: 17px; font-weight: 800; }
 .receipt hr { border: none; border-top: 1.5px dashed #999; margin: 8px 0; }
@@ -286,6 +343,9 @@ a { color: inherit; text-decoration: none; }
 .menu-card .mc-actions { display: flex; gap: 8px; margin-top: 10px; }
 .menu-card .mc-actions .btn { flex: 1; }
 .img-preview { width: 100%; height: 130px; object-fit: cover; border-radius: 12px; border: 1.5px dashed var(--line); background: var(--surface-2); margin-bottom: 12px; }
+.img-upload-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1.5px dashed var(--line); border-radius: 12px; background: var(--surface-2); }
+.img-upload-row .img-upload-btn { cursor: pointer; }
+.img-upload-row .muted { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ================= Source badges / BOQ / PO ================= */
 .src-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; }
@@ -340,6 +400,25 @@ a { color: inherit; text-decoration: none; }
 .att-cell.absent { background: var(--red-soft); color: var(--red); border-color: #f0cfc8; }
 .att-cell.leave { background: var(--amber-soft); color: var(--amber); border-color: #ecdcae; }
 .att-cell.weekoff { background: #e7eaf0; color: #5a6478; border-color: #d3d9e2; }
+
+/* Reports period-preset buttons */
+.period-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.period-btns .btn { flex: 1 1 auto; min-width: 110px; }
+
+/* Attendance dropdown per shift */
+.att-select-wrap {
+  display: inline-block; border-radius: 10px; padding: 2px; border: 1.5px solid var(--line);
+  background: var(--surface-2); min-width: 150px; transition: all .12s;
+}
+.att-select-wrap select {
+  width: 100%; border: none; background: transparent; padding: 8px 10px; border-radius: 8px;
+  font-weight: 700; font-size: 12.5px; color: inherit; font-family: inherit; cursor: pointer; outline: none;
+}
+.att-select-wrap.unset { border-style: dashed; color: var(--ink-3); }
+.att-select-wrap.present { background: var(--green-soft); color: var(--green); border-color: #b8e0c8; }
+.att-select-wrap.absent { background: var(--red-soft); color: var(--red); border-color: #f0cfc8; }
+.att-select-wrap.leave { background: var(--amber-soft); color: var(--amber); border-color: #ecdcae; }
+.att-select-wrap.weekoff { background: #e7eaf0; color: #5a6478; border-color: #d3d9e2; }
 
 /* ================= Voice billing ================= */
 .btn-mic {

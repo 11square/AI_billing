@@ -9,6 +9,7 @@ const Reports = {
         <button class="rep-tab ${this.tab === 'daily' ? 'active' : ''}" data-t="daily">📅 Day Analytics</button>
         <button class="rep-tab ${this.tab === 'monthly' ? 'active' : ''}" data-t="monthly">🗓️ Monthly</button>
         <button class="rep-tab ${this.tab === 'stock' ? 'active' : ''}" data-t="stock">📦 Stock</button>
+        <button class="rep-tab ${this.tab === 'raw' ? 'active' : ''}" data-t="raw">🥣 Raw Materials</button>
       </div>
       <div id="rep-body"><div class="loader"></div></div>`;
     el.querySelector('#rep-tabs').addEventListener('click', e => {
@@ -26,7 +27,175 @@ const Reports = {
     if (this.tab === 'generated') this.generated(box);
     else if (this.tab === 'daily') this.daily(box);
     else if (this.tab === 'monthly') this.monthly(box);
+    else if (this.tab === 'raw') this.raw(box);
     else this.stock(box);
+  },
+
+  // Human label for each period preset.
+  periodLabel(p) {
+    return ({ day: 'Day', week: 'Week', month: 'Month', year: 'Year', fy: 'FY' })[p] || p;
+  },
+
+  // Given an anchor date (YYYY-MM-DD) and a preset, return the local-time
+  // start/end + a display label. Week is Mon–Sun. FY is Apr 1 → Mar 31 (India).
+  periodRange(anchorStr, preset) {
+    const [y, m, d] = anchorStr.split('-').map(Number);
+    const anchor = new Date(y, m - 1, d);
+    const pad = n => String(n).padStart(2, '0');
+    const iso = dt => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+    const isoDT = dt => `${iso(dt)}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+    const monthName = i => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][i];
+    const dayLabel = dt => `${dt.getDate()} ${monthName(dt.getMonth())} ${dt.getFullYear()}`;
+
+    let start, end, label, isDay = false;
+    if (preset === 'day') {
+      start = new Date(y, m - 1, d, 0, 0, 0);
+      end   = new Date(y, m - 1, d, 23, 59, 59);
+      label = dayLabel(anchor);
+      isDay = true;                      // day uses {date:} not {start,end}
+    } else if (preset === 'week') {
+      // Monday-anchored week: getDay() Sun=0 → shift so Mon=0.
+      const dow = (anchor.getDay() + 6) % 7;
+      start = new Date(y, m - 1, d - dow, 0, 0, 0);
+      end   = new Date(y, m - 1, d - dow + 6, 23, 59, 59);
+      label = `${dayLabel(start)} → ${dayLabel(end)}`;
+    } else if (preset === 'month') {
+      start = new Date(y, m - 1, 1, 0, 0, 0);
+      end   = new Date(y, m,     0, 23, 59, 59);       // day 0 of next month = last day of this month
+      label = `${monthName(m - 1)} ${y}`;
+    } else if (preset === 'year') {
+      start = new Date(y, 0, 1, 0, 0, 0);
+      end   = new Date(y, 11, 31, 23, 59, 59);
+      label = `${y}`;
+    } else if (preset === 'fy') {
+      // Indian FY: Apr 1 – Mar 31. Anchor month < Apr → FY started previous year.
+      const fyStartYear = (anchor.getMonth() < 3) ? y - 1 : y;
+      start = new Date(fyStartYear,     3, 1, 0, 0, 0);
+      end   = new Date(fyStartYear + 1, 2, 31, 23, 59, 59);
+      label = `FY ${fyStartYear}-${String(fyStartYear + 1).slice(-2)}`;
+    }
+    return { start: isoDT(start), end: isoDT(end), label, isDay };
+  },
+
+  // Turn a picker value + preset into an anchor date (YYYY-MM-DD, local time).
+  // The anchor is any day inside the chosen period; periodRange() expands it.
+  _anchorFromPicker(preset, value) {
+    const pad = n => String(n).padStart(2, '0');
+    if (preset === 'day') {
+      // native <input type="date"> gives YYYY-MM-DD directly
+      return value;
+    }
+    if (preset === 'week') {
+      // native <input type="week"> gives YYYY-Www — resolve to that week's Monday
+      const [yStr, wStr] = value.split('-W');
+      const year = parseInt(yStr), week = parseInt(wStr);
+      // ISO 8601: week 1 is the one containing Jan 4.
+      const jan4 = new Date(year, 0, 4);
+      const dow = (jan4.getDay() + 6) % 7;              // shift so Mon=0
+      const week1Mon = new Date(jan4); week1Mon.setDate(jan4.getDate() - dow);
+      const monday = new Date(week1Mon); monday.setDate(week1Mon.getDate() + (week - 1) * 7);
+      return `${monday.getFullYear()}-${pad(monday.getMonth() + 1)}-${pad(monday.getDate())}`;
+    }
+    if (preset === 'month') {
+      // native <input type="month"> gives YYYY-MM — anchor at day 1
+      return `${value}-01`;
+    }
+    if (preset === 'year') {
+      return `${value}-01-01`;
+    }
+    if (preset === 'fy') {
+      // FY value is the start year (Apr 1 of that year)
+      return `${value}-04-01`;
+    }
+    return value;
+  },
+
+  // Open the right picker for the chosen preset, then generate on submit.
+  openPeriodPicker(preset, hostBox) {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+    const yStr = `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`;
+    const curYear = now.getFullYear();
+    const curFy = now.getMonth() < 3 ? curYear - 1 : curYear;
+
+    // ISO week string for "current week"
+    const isoWeek = (d) => {
+      const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      const dow = (t.getUTCDay() + 6) % 7;
+      t.setUTCDate(t.getUTCDate() - dow + 3);            // Thursday of that week
+      const week1 = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+      const week = 1 + Math.round(((t - week1) / 86400000 - 3 + ((week1.getUTCDay() + 6) % 7)) / 7);
+      return `${t.getUTCFullYear()}-W${pad(week)}`;
+    };
+
+    // Build the picker HTML + read function per preset.
+    let bodyHtml, readValue, title;
+    if (preset === 'day') {
+      title = '📅 Pick a day';
+      bodyHtml = `<div class="field"><label>Day</label><input type="date" class="date-input" id="pp-val" value="${yStr}" max="${todayStr}"/></div>`;
+      readValue = (root) => root.querySelector('#pp-val').value;
+    } else if (preset === 'week') {
+      title = '🗓️ Pick a week';
+      bodyHtml = `<div class="field"><label>Week (Monday → Sunday)</label><input type="week" class="date-input" id="pp-val" value="${isoWeek(yesterday)}" max="${isoWeek(now)}"/></div>`;
+      readValue = (root) => root.querySelector('#pp-val').value;
+    } else if (preset === 'month') {
+      title = '📆 Pick a month';
+      bodyHtml = `<div class="field"><label>Month</label><input type="month" class="date-input" id="pp-val" value="${curYear}-${pad(now.getMonth() + 1)}" max="${curYear}-${pad(now.getMonth() + 1)}"/></div>`;
+      readValue = (root) => root.querySelector('#pp-val').value;
+    } else if (preset === 'year') {
+      title = '🎯 Pick a year';
+      // Show last 10 years — plenty for a small POS, no future years.
+      const years = [];
+      for (let i = 0; i < 10; i++) years.push(curYear - i);
+      bodyHtml = `<div class="field"><label>Year</label><select class="select" id="pp-val" style="width:100%">${years.map(y => `<option value="${y}">${y}</option>`).join('')}</select></div>`;
+      readValue = (root) => root.querySelector('#pp-val').value;
+    } else if (preset === 'fy') {
+      title = '🏦 Pick a financial year';
+      // Indian FY: Apr 1 → Mar 31 of the next year. Show last 10 FYs.
+      const fys = [];
+      for (let i = 0; i < 10; i++) fys.push(curFy - i);
+      bodyHtml = `<div class="field"><label>Financial Year (Apr – Mar)</label><select class="select" id="pp-val" style="width:100%">${fys.map(y => `<option value="${y}">FY ${y}-${String(y + 1).slice(-2)}</option>`).join('')}</select></div>`;
+      readValue = (root) => root.querySelector('#pp-val').value;
+    }
+
+    const modal = Ui.modal({
+      title,
+      body: `${bodyHtml}<div class="muted" id="pp-hint" style="margin-top:10px;font-size:12px"></div>`,
+      foot: `<button class="btn btn-ghost" id="pp-cancel">Cancel</button>
+             <button class="btn btn-primary" id="pp-go">Generate report</button>`
+    });
+
+    const $ = s => modal.el.querySelector(s);
+    const refreshHint = () => {
+      const raw = readValue(modal.el);
+      if (!raw) { $('#pp-hint').textContent = ''; return; }
+      try {
+        const anchor = this._anchorFromPicker(preset, raw);
+        const r = this.periodRange(anchor, preset);
+        $('#pp-hint').innerHTML = `Report will cover <b>${r.label}</b>.`;
+      } catch { $('#pp-hint').textContent = ''; }
+    };
+    $('#pp-val').addEventListener('change', refreshHint);
+    $('#pp-val').addEventListener('input', refreshHint);
+    refreshHint();
+
+    $('#pp-cancel').addEventListener('click', modal.close);
+    $('#pp-go').addEventListener('click', async () => {
+      const raw = readValue(modal.el);
+      if (!raw) { Ui.toast('Pick a value first', 'error'); return; }
+      const anchor = this._anchorFromPicker(preset, raw);
+      const { start, end, label, isDay } = this.periodRange(anchor, preset);
+      try {
+        const payload = isDay ? { date: anchor } : { start, end };
+        const report = await Api.post('/reports/generate', payload);
+        Ui.toast(`Report generated · ${label}`);
+        modal.close();
+        this.viewReport(report);
+        this.generated(hostBox);
+      } catch (e) { Ui.toast(e.message, 'error'); }
+    });
   },
 
   // ---------- GENERATED DAILY REPORTS ----------
@@ -36,11 +205,6 @@ const Reports = {
     try {
       [schedule, reports] = await Promise.all([Api.get('/reports/schedule'), Api.get('/reports/generated')]);
     } catch (e) { box.innerHTML = `<div class="empty-state">${Ui.esc(e.message)}</div>`; return; }
-
-    const pad = n => String(n).padStart(2, '0');
-    const now = new Date();
-    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
-    const dstr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
     box.innerHTML = `
       <div class="grid-2" style="margin-bottom:16px">
@@ -54,11 +218,15 @@ const Reports = {
         </div>
         <div class="card">
           <div class="card-title">⚡ Generate now</div>
-          <div class="toolbar" style="margin:0 0 10px">
-            <input type="date" class="date-input" id="rg-date" value="${dstr(yesterday)}" max="${dstr(now)}"/>
-            <button class="btn btn-green" id="rg-gen-day">Generate for Day</button>
+          <p class="muted" style="margin-bottom:10px;line-height:1.5">Pick the period type — a calendar opens so you can choose the exact day / week / month / year / financial year to report on.</p>
+          <div class="period-btns">
+            <button class="btn btn-green btn-sm" data-period="day">📅 Day</button>
+            <button class="btn btn-green btn-sm" data-period="week">🗓️ Week</button>
+            <button class="btn btn-green btn-sm" data-period="month">📆 Month</button>
+            <button class="btn btn-green btn-sm" data-period="year">🎯 Year</button>
+            <button class="btn btn-green btn-sm" data-period="fy">🏦 Financial Year</button>
           </div>
-          <details>
+          <details style="margin-top:12px">
             <summary style="cursor:pointer;font-weight:700;font-size:12.5px;color:var(--brand-2);margin-bottom:8px">Custom date &amp; time range</summary>
             <div class="toolbar" style="margin:8px 0 0">
               <input type="datetime-local" class="date-input" id="rg-start"/>
@@ -94,14 +262,11 @@ const Reports = {
         Ui.toast(`Auto report time set to ${r.time}`);
       } catch (e) { Ui.toast(e.message, 'error'); }
     });
-    box.querySelector('#rg-gen-day').addEventListener('click', async () => {
-      try {
-        const report = await Api.post('/reports/generate', { date: box.querySelector('#rg-date').value });
-        Ui.toast('Report generated');
-        this.viewReport(report);
-        this.generated(box);
-      } catch (e) { Ui.toast(e.message, 'error'); }
+
+    box.querySelectorAll('[data-period]').forEach(btn => {
+      btn.addEventListener('click', () => this.openPeriodPicker(btn.dataset.period, box));
     });
+
     box.querySelector('#rg-gen-range').addEventListener('click', async () => {
       const start = box.querySelector('#rg-start').value, end = box.querySelector('#rg-end').value;
       if (!start || !end) { Ui.toast('Pick both start and end date-time', 'error'); return; }
@@ -239,6 +404,122 @@ const Reports = {
       <div class="grid-2">
         <div class="card"><div class="card-title">Low stock — restock soon</div>${low}</div>
         <div class="card"><div class="card-title">Out of stock</div>${out}</div>
+      </div>`;
+  },
+
+  // ----- Raw materials report: daily movements + live stock snapshot -----
+  async raw(box, date) {
+    const today = new Date().toISOString().slice(0, 10);
+    date = date || today;
+    box.innerHTML = `
+      <div class="toolbar">
+        <input type="date" class="date-input" id="rr-date" value="${date}" max="${today}"/>
+        <div class="muted" style="font-weight:600">All raw-material movements on the selected day + live stock snapshot.</div>
+      </div>
+      <div id="rr-out"><div class="loader"></div></div>`;
+    box.querySelector('#rr-date').addEventListener('change', e => this.raw(box, e.target.value));
+
+    let materials, movements;
+    try {
+      [materials, movements] = await Promise.all([
+        Api.get('/raw-materials'),
+        Api.get(`/raw-materials/movements/day?date=${date}`)
+      ]);
+    } catch (e) {
+      box.querySelector('#rr-out').innerHTML = `<div class="empty-state">${Ui.esc(e.message)}</div>`;
+      return;
+    }
+
+    const fmtQty = n => { const v = parseFloat(n) || 0; return v % 1 ? v.toFixed(3) : v.toString(); };
+
+    // Aggregate consumed / added per material for the day.
+    const consumed = new Map(), added = new Map();
+    for (const mv of movements) {
+      const id = mv.rawMaterialId;
+      const q = parseFloat(mv.changeQty);
+      if (mv.reason === 'sale') consumed.set(id, (consumed.get(id) || 0) + Math.abs(q));
+      else if (q > 0) added.set(id, (added.get(id) || 0) + q);
+    }
+
+    const low = materials.filter(m => m.status === 'low' || m.status === 'out');
+    const topConsumed = materials
+      .map(m => ({ ...m, consumedToday: consumed.get(m.id) || 0 }))
+      .filter(m => m.consumedToday > 0)
+      .sort((a, b) => b.consumedToday - a.consumedToday)
+      .slice(0, 10);
+
+    const topRows = topConsumed.length ? topConsumed.map((m, i) => `
+      <div class="list-row">
+        <span><span class="rank">${i + 1}</span>${Ui.esc(m.name)}</span>
+        <span><b>${fmtQty(m.consumedToday)}</b> ${Ui.esc(m.unit)}</span>
+      </div>`).join('')
+      : '<div class="empty-state" style="padding:26px"><div class="big">☕</div>No raw materials consumed on this day</div>';
+
+    const lowRows = low.length ? low.map(m => `
+      <div class="list-row">
+        <span>${Ui.esc(m.name)}</span>
+        <span class="badge ${m.status === 'out' ? 'unpaid' : 'partial'}">
+          ${fmtQty(m.currentStock)} ${Ui.esc(m.unit)} · min ${fmtQty(m.minStock)}
+        </span>
+      </div>`).join('')
+      : '<div class="empty-state" style="padding:26px"><div class="big">✅</div>All raw materials well stocked</div>';
+
+    const materialRows = materials.length ? `
+      <table class="tbl">
+        <thead><tr><th>Material</th><th>Consumed today</th><th>Added today</th><th>In stock</th><th>Status</th></tr></thead>
+        <tbody>
+          ${materials.map(m => `
+            <tr>
+              <td><b>${Ui.esc(m.name)}</b></td>
+              <td>${fmtQty(consumed.get(m.id) || 0)} ${Ui.esc(m.unit)}</td>
+              <td>${fmtQty(added.get(m.id) || 0)} ${Ui.esc(m.unit)}</td>
+              <td><b>${fmtQty(m.currentStock)}</b> ${Ui.esc(m.unit)}</td>
+              <td>${m.status === 'out' ? '<span class="badge unpaid">Out</span>'
+                    : m.status === 'low' ? '<span class="badge partial">Low</span>'
+                    : '<span class="badge paid">OK</span>'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`
+      : '<div class="empty-state"><div class="big">🥣</div><h3>No raw materials configured</h3><p>Add them in Raw Materials to start tracking.</p></div>';
+
+    const movementTable = movements.length ? `
+      <table class="tbl">
+        <thead><tr><th>When</th><th>Material</th><th>Reason</th><th>Change</th><th>Balance</th><th>Notes</th></tr></thead>
+        <tbody>
+          ${movements.map(mv => {
+            const chg = parseFloat(mv.changeQty);
+            const sign = chg > 0 ? '+' : '';
+            const cls = chg > 0 ? 'paid' : 'unpaid';
+            return `<tr>
+              <td class="muted">${Ui.fmtTime(mv.created_at)}</td>
+              <td>${Ui.esc(mv.rawMaterial?.name || '—')}</td>
+              <td><span class="badge ${cls}">${Ui.esc(mv.reason)}</span></td>
+              <td><b>${sign}${fmtQty(chg)}</b> ${Ui.esc(mv.rawMaterial?.unit || '')}</td>
+              <td>${fmtQty(mv.balanceAfter)}</td>
+              <td class="muted">${Ui.esc(mv.notes || '—')}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`
+      : '<div class="empty-state" style="padding:26px"><div class="big">🗒️</div>No movements on this day</div>';
+
+    box.querySelector('#rr-out').innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-ic" style="background:var(--blue-soft)">🥣</div><div class="stat-val">${materials.length}</div><div class="stat-lbl">Raw Materials</div></div>
+        <div class="stat-card"><div class="stat-ic" style="background:var(--amber-soft)">⚠️</div><div class="stat-val">${low.length}</div><div class="stat-lbl">Low / Out</div></div>
+        <div class="stat-card"><div class="stat-ic" style="background:var(--brand-soft)">📜</div><div class="stat-val">${movements.length}</div><div class="stat-lbl">Movements Today</div></div>
+      </div>
+      <div class="grid-2">
+        <div class="card"><div class="card-title">Top consumed on ${Ui.fmtDate(date)}</div>${topRows}</div>
+        <div class="card"><div class="card-title">Low &amp; out of stock</div>${lowRows}</div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-title">Live raw-material snapshot</div>
+        ${materialRows}
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-title">Movement log · ${Ui.fmtDate(date)}</div>
+        ${movementTable}
       </div>`;
   }
 };

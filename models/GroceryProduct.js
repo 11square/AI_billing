@@ -11,6 +11,12 @@ const GroceryProduct = sequelize.define('GroceryProduct', {
     type: DataTypes.STRING(200),
     allowNull: false
   },
+  nameTamil: {
+    // Owner-typed Tamil-script transliteration of `name`.
+    // Displayed on receipts when the cashier prints in Tamil.
+    type: DataTypes.STRING(200),
+    field: 'name_tamil'
+  },
   barcode: {
     type: DataTypes.STRING(50),
     unique: true

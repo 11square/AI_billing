@@ -349,23 +349,29 @@ router.get('/dashboard', auth, async (req, res) => {
     const totalPendingDues = pendingInvoices.reduce((sum, inv) =>
       sum + (parseFloat(inv.grandTotal) - parseFloat(inv.paidAmount)), 0);
 
-    // Low stock count - simplified approach
+    // Low stock count — spans BOTH tiers now:
+    //   * Outsourced products (grocery_products.stock <= minStock, own items skipped since they don't carry stock)
+    //   * Raw materials (raw_materials.current_stock <= min_stock)
     let lowStockCount = 0;
     try {
       if (!shopType || shopType === 'grocery') {
-        const groceryProducts = await GroceryProduct.findAll({
-          where: { isActive: true }
-        });
-        lowStockCount += groceryProducts.filter(p => p.stock <= p.minStock).length;
+        const groceryProducts = await GroceryProduct.findAll({ where: { isActive: true } });
+        // Only outsourced items have a meaningful stock number now.
+        lowStockCount += groceryProducts
+          .filter(p => (p.sourceType || 'own') === 'outsourced')
+          .filter(p => p.stock <= p.minStock).length;
       }
       if (!shopType || shopType === 'fertilizer') {
-        const fertilizerProducts = await FertilizerProduct.findAll({
-          where: { isActive: true }
-        });
+        const fertilizerProducts = await FertilizerProduct.findAll({ where: { isActive: true } });
         lowStockCount += fertilizerProducts.filter(p => p.stock <= p.minStock).length;
       }
+      // Add raw-material lows across the board.
+      try {
+        const { RawMaterial } = require('../models/Inventory');
+        const rawLow = await RawMaterial.findAll({ where: { isActive: true } });
+        lowStockCount += rawLow.filter(m => parseFloat(m.currentStock) <= parseFloat(m.minStock)).length;
+      } catch { /* raw material tables might not exist yet */ }
     } catch (e) {
-      // If low stock check fails, continue with 0
       lowStockCount = 0;
     }
 
@@ -382,7 +388,11 @@ router.get('/dashboard', auth, async (req, res) => {
     // `absent` and `week_off` statuses; `leave` is treated as sick leave.
     // Half-day = staff whose default shift is 'both' but who were present in
     // exactly one of the two shifts on this date.
+    // Per-staff counts (unique bodies who showed up vs didn't) — used by the
+    // dashboard's simplified Present / Absent boxes. Shift-level counts are
+    // still returned for anywhere that wants the finer breakdown.
     let attendance = {
+      presentStaff: 0, absentStaff: 0,
       morningPresent: 0, morningAbsent: 0,
       eveningPresent: 0, eveningAbsent: 0,
       halfDays: 0, sickLeaves: 0
@@ -396,6 +406,8 @@ router.get('/dashboard', auth, async (req, res) => {
 
       const staffWithLeave = new Set();
       let halfDayCount = 0;
+      let presentStaffCount = 0;
+      let absentStaffCount = 0;
 
       for (const s of activeStaff) {
         const morningStatus = byKey[`${s.id}|morning`] || null;
@@ -404,7 +416,7 @@ router.get('/dashboard', auth, async (req, res) => {
         const isPresent = st => st === 'present';
         const isAbsent = st => st === 'absent' || st === 'week_off';
 
-        // Column counts only include staff scheduled for that shift.
+        // Shift-level tallies restricted to staff scheduled on that shift.
         const worksMorning = s.defaultShift === 'morning' || s.defaultShift === 'both';
         const worksEvening = s.defaultShift === 'evening' || s.defaultShift === 'both';
 
@@ -417,17 +429,30 @@ router.get('/dashboard', auth, async (req, res) => {
           else if (isAbsent(eveningStatus)) attendance.eveningAbsent++;
         }
 
+        // Per-staff (unique) — a body counts as present if any scheduled
+        // shift was marked present, otherwise absent if any scheduled shift
+        // was marked absent/week_off (or if no attendance was recorded at all).
+        const showedUp =
+          (worksMorning && isPresent(morningStatus)) ||
+          (worksEvening && isPresent(eveningStatus));
+        const anyMarked =
+          (worksMorning && morningStatus) || (worksEvening && eveningStatus);
+        if (showedUp) presentStaffCount++;
+        else if (anyMarked || morningStatus === 'leave' || eveningStatus === 'leave') absentStaffCount++;
+
         if (morningStatus === 'leave' || eveningStatus === 'leave') {
           staffWithLeave.add(s.id);
         }
 
-        // Half-day: both-shift staff, present in exactly one shift
+        // Half-day: both-shift staff, present in exactly one shift.
         if (s.defaultShift === 'both') {
           const p = (isPresent(morningStatus) ? 1 : 0) + (isPresent(eveningStatus) ? 1 : 0);
           if (p === 1) halfDayCount++;
         }
       }
 
+      attendance.presentStaff = presentStaffCount;
+      attendance.absentStaff = absentStaffCount;
       attendance.halfDays = halfDayCount;
       attendance.sickLeaves = staffWithLeave.size;
     } catch (e) {
@@ -454,6 +479,85 @@ router.get('/dashboard', auth, async (req, res) => {
         paymentStatus: inv.paymentStatus,
         createdAt: inv.created_at
       }))
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @route   GET /api/reports/quick-stats?period=day|week|month|year|fy&date=YYYY-MM-DD
+// Lightweight: returns {sales, orders, profit, label, start, end} for a
+// requested period without persisting anything (unlike /reports/generate).
+router.get('/quick-stats', auth, async (req, res) => {
+  try {
+    const { period = 'day', date, shopType } = req.query;
+    const anchorStr = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : (() => {
+      const d = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    })();
+    const [ay, am, ad] = anchorStr.split('-').map(Number);
+    const anchor = new Date(ay, am - 1, ad);
+    const monthName = i => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][i];
+
+    // Compute the [start, end] window based on the requested period.
+    let start, end, label;
+    if (period === 'day') {
+      start = new Date(ay, am - 1, ad, 0, 0, 0);
+      end   = new Date(ay, am - 1, ad, 23, 59, 59, 999);
+      label = `${ad} ${monthName(am - 1)} ${ay}`;
+    } else if (period === 'week') {
+      const dow = (anchor.getDay() + 6) % 7;                 // Monday = 0
+      start = new Date(ay, am - 1, ad - dow, 0, 0, 0);
+      end   = new Date(ay, am - 1, ad - dow + 6, 23, 59, 59, 999);
+      label = `Week of ${start.getDate()} ${monthName(start.getMonth())}`;
+    } else if (period === 'month') {
+      start = new Date(ay, am - 1, 1, 0, 0, 0);
+      end   = new Date(ay, am, 0, 23, 59, 59, 999);
+      label = `${monthName(am - 1)} ${ay}`;
+    } else if (period === 'year') {
+      start = new Date(ay, 0, 1, 0, 0, 0);
+      end   = new Date(ay, 11, 31, 23, 59, 59, 999);
+      label = `${ay}`;
+    } else if (period === 'fy') {
+      const fyStart = (anchor.getMonth() < 3) ? ay - 1 : ay;
+      start = new Date(fyStart, 3, 1, 0, 0, 0);
+      end   = new Date(fyStart + 1, 2, 31, 23, 59, 59, 999);
+      label = `FY ${fyStart}-${String(fyStart + 1).slice(-2)}`;
+    } else {
+      return res.status(400).json({ message: 'Bad period' });
+    }
+
+    const where = { created_at: { [Op.between]: [start, end] } };
+    if (shopType) where.shopType = shopType;
+
+    const invoices = await Invoice.findAll({
+      where,
+      include: [{ model: InvoiceItem, as: 'items' }]
+    });
+    const sales = invoices.reduce((s, i) => s + parseFloat(i.grandTotal), 0);
+    const orders = invoices.length;
+
+    // Profit = sum over each line of (unitPrice - product.purchasePrice) × qty.
+    // Same formula as /reports/dashboard for consistency.
+    let profit = 0;
+    for (const inv of invoices) {
+      for (const it of inv.items) {
+        const prod = it.productType === 'grocery'
+          ? await GroceryProduct.findByPk(it.productId)
+          : await FertilizerProduct.findByPk(it.productId);
+        if (!prod) continue;
+        profit += (parseFloat(it.unitPrice) - parseFloat(prod.purchasePrice)) * it.quantity;
+      }
+    }
+
+    res.json({
+      period, label,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      sales: +sales.toFixed(2),
+      orders,
+      profit: +profit.toFixed(2)
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

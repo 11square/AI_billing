@@ -99,14 +99,12 @@ const Voice = {
     Ui.toast(msg, ok ? 'success' : 'error');
   },
 
-  say(msg) {
-    try {
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(msg);
-      u.lang = 'en-IN';
-      u.rate = 1.1;
-      speechSynthesis.speak(u);
-    } catch { /* speech synthesis optional */ }
+  // Voice output disabled per shop preference — the app should act on what it
+  // hears, not talk back. Feedback still surfaces silently via this.log() +
+  // Ui.toast(). Also cancel anything already queued in case the browser had
+  // an utterance mid-flight when this shipped.
+  say(_msg) {
+    try { if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); } catch {}
   },
 
   // ---------- command parsing ----------

@@ -286,7 +286,8 @@ const Pos = {
           discount: t.disc,
           payments,
           items: Object.values(this.cart).map(({ product: p, qty }) => ({
-            productId: p.id, productName: p.name, quantity: qty, unit: p.unit,
+            productId: p.id, productName: p.name, productNameTamil: p.nameTamil || null,
+            quantity: qty, unit: p.unit,
             unitPrice: parseFloat(p.sellingPrice), gstRate: 0
           }))
         };
@@ -310,13 +311,20 @@ const Pos = {
   },
 
   showReceipt(inv) {
+    const curLang = Ui.getLang();
     const m = Ui.modal({
       title: `Receipt · ${Ui.esc(inv.invoiceNumber)}`,
-      body: `<div class="receipt-modal-wrap">${Ui.receiptHtml(inv)}</div>`,
+      body: `
+        <div class="lang-toggle">
+          <button class="lang-chip ${curLang === 'en' ? 'active' : ''}" data-lang="en">English</button>
+          <button class="lang-chip ${curLang === 'ta' ? 'active' : ''}" data-lang="ta">தமிழ்</button>
+        </div>
+        <div class="receipt-modal-wrap">${Ui.receiptHtml(inv)}</div>`,
       foot: `<button class="btn btn-ghost" id="r-close">New Order</button>
              <button class="btn btn-primary" id="r-print"><span data-icon="print"></span> Print Receipt</button>`
     });
     m.el.querySelector('#r-close').addEventListener('click', m.close);
-    m.el.querySelector('#r-print').addEventListener('click', () => Ui.printReceipt(inv));
+    m.el.querySelector('#r-print').addEventListener('click', () => Ui.printReceipt(inv, Ui.getLang()));
+    Ui.attachLangToggle(m.el, inv, curLang);
   }
 };

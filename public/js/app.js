@@ -5,7 +5,12 @@ const App = {
     pos:       { title: 'Billing / POS', mod: () => Pos },
     invoices:  { title: 'Invoices', mod: () => Invoices },
     menu:      { title: 'Menu Items', mod: () => Menu },
-    stock:     { title: 'Stock & Purchase Orders', mod: () => Stock },
+    // Stock is now the single raw-material inventory page — the old
+    // product-level Stock UI lived on GroceryProduct.stock which is now
+    // meaningless for own-source items (they run on recipes). Outsourced
+    // product stock is visible on the Menu Items page.
+    stock:     { title: 'Stock', mod: () => RawMaterials },
+    po:        { title: 'Purchase Orders', mod: () => PurchaseOrders },
     customers: { title: 'Customers', mod: () => Customers },
     staff:     { title: 'Staff & Attendance', mod: () => Staff },
     reports:   { title: 'Reports', mod: () => Reports }
@@ -21,7 +26,6 @@ const App = {
     document.getElementById('login-form').addEventListener('submit', e => { e.preventDefault(); this.submitAuth(); });
     document.getElementById('login-toggle-link').addEventListener('click', e => { e.preventDefault(); this.toggleMode(); });
     document.getElementById('btn-logout').addEventListener('click', () => this.logout());
-    document.getElementById('btn-new-order').addEventListener('click', () => { location.hash = '#pos'; });
     window.addEventListener('hashchange', () => this.route());
 
     if (Api.token && Api.user()) this.showApp();
@@ -100,7 +104,6 @@ const App = {
     if (key !== 'pos' && window.Voice) Voice.stop();
     document.querySelectorAll('.nav-item').forEach(a => a.classList.toggle('active', a.dataset.page === key));
     document.getElementById('page-title').textContent = page.title;
-    document.getElementById('btn-new-order').style.display = key === 'pos' ? 'none' : '';
     page.mod().render(document.getElementById('page'));
   }
 };

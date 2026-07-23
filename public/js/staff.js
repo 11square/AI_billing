@@ -78,7 +78,7 @@ const Staff = {
       </div>
       <div class="att-legend">
         ${this.STATUSES.map(s => `<span class="att-chip ${s.cls}">${s.short} ${s.label}</span>`).join('')}
-        <span class="muted" style="margin-left:auto">Tap a shift to cycle status</span>
+        <span class="muted" style="margin-left:auto">Pick a status per shift below</span>
       </div>
       <div class="card" style="padding:8px 6px">
         <table class="tbl att-tbl">
@@ -93,8 +93,9 @@ const Staff = {
     box.querySelector('#att-all-m').addEventListener('click', () => this.markAll('morning'));
     box.querySelector('#att-all-e').addEventListener('click', () => this.markAll('evening'));
 
-    box.querySelectorAll('.att-cell').forEach(cell => {
-      cell.addEventListener('click', () => this.cycleCell(cell));
+    // Dropdown per shift — status change is the save trigger (buffered until Save Attendance).
+    box.querySelectorAll('.att-select').forEach(sel => {
+      sel.addEventListener('change', () => this.applyStatus(sel, sel.value));
     });
   },
 
@@ -103,31 +104,30 @@ const Staff = {
     const status = rec ? rec.status : '';
     const st = this.STATUSES.find(x => x.key === status);
     const cls = st ? st.cls : 'unset';
-    const label = st ? st.label : 'Mark';
+    // Native select — colour tint on the wrapper mirrors the current status.
     return `<td style="text-align:center">
-      <button class="att-cell ${cls}" data-staff="${s.staffId}" data-shift="${shift}" data-status="${status}">${label}</button>
+      <div class="att-select-wrap ${cls}">
+        <select class="att-select" data-staff="${s.staffId}" data-shift="${shift}">
+          <option value="" ${!status ? 'selected' : ''}>— Mark —</option>
+          ${this.STATUSES.map(x => `<option value="${x.key}" ${status === x.key ? 'selected' : ''}>${x.short} · ${x.label}</option>`).join('')}
+        </select>
+      </div>
     </td>`;
   },
 
-  cycleCell(cell) {
-    const order = ['', 'present', 'absent', 'leave', 'week_off'];
-    const cur = cell.dataset.status || '';
-    const next = order[(order.indexOf(cur) + 1) % order.length];
-    this.applyStatus(cell, next);
-  },
-
-  applyStatus(cell, status) {
+  applyStatus(sel, status) {
     const st = this.STATUSES.find(x => x.key === status);
-    cell.dataset.status = status;
-    cell.className = 'att-cell ' + (st ? st.cls : 'unset');
-    cell.textContent = st ? st.label : 'Mark';
-    const key = `${cell.dataset.staff}|${cell.dataset.shift}`;
-    if (status) this.dirty[key] = { staffId: parseInt(cell.dataset.staff), shift: cell.dataset.shift, status };
+    const wrap = sel.closest('.att-select-wrap');
+    // Recolour the wrapper to reflect the chosen status.
+    wrap.className = 'att-select-wrap ' + (st ? st.cls : 'unset');
+    sel.value = status || '';
+    const key = `${sel.dataset.staff}|${sel.dataset.shift}`;
+    if (status) this.dirty[key] = { staffId: parseInt(sel.dataset.staff), shift: sel.dataset.shift, status };
     else delete this.dirty[key];
   },
 
   markAll(shift) {
-    document.querySelectorAll(`.att-cell[data-shift="${shift}"]`).forEach(cell => this.applyStatus(cell, 'present'));
+    document.querySelectorAll(`.att-select[data-shift="${shift}"]`).forEach(sel => this.applyStatus(sel, 'present'));
     Ui.toast(`All marked present for ${shift} shift`);
   },
 

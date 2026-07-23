@@ -60,9 +60,20 @@ const Purchase = sequelize.define('Purchase', {
         field: 'vendor_bill_no'
     },
     billDate: {
+        // Kept for backwards-compat: date on the vendor's bill / invoice.
         type: DataTypes.DATE,
         allowNull: false,
         field: 'bill_date'
+    },
+    orderDate: {
+        // When the order was placed with the vendor.
+        type: DataTypes.DATEONLY,
+        field: 'order_date'
+    },
+    receivedDate: {
+        // When goods physically arrived / were counted in.
+        type: DataTypes.DATEONLY,
+        field: 'received_date'
     },
     paymentMode: {
         type: DataTypes.ENUM('cash', 'online', 'credit', 'split'),
@@ -94,8 +105,28 @@ const Purchase = sequelize.define('Purchase', {
         field: 'grand_total'
     },
     status: {
+        // NOTE: this field tracks PAYMENT status of the PO.
+        // Delivery state lives in `deliveryStatus` below (five explicit states).
         type: DataTypes.ENUM('pending', 'paid', 'partial'),
         defaultValue: 'pending'
+    },
+    deliveryStatus: {
+        // Where the goods are in their lifecycle:
+        //   pending             — created, waiting for supplier
+        //   approved            — supplier confirmed
+        //   partially_delivered — some raw-material lines received
+        //   delivered           — all lines fully received
+        //   cancelled           — PO cancelled, no goods will arrive
+        type: DataTypes.ENUM('pending', 'approved', 'partially_delivered', 'delivered', 'cancelled'),
+        defaultValue: 'pending',
+        field: 'delivery_status'
+    },
+    expectedDelivery: {
+        type: DataTypes.DATEONLY,
+        field: 'expected_delivery'
+    },
+    notes: {
+        type: DataTypes.STRING(500)
     },
     shopType: {
         type: DataTypes.ENUM('grocery', 'fertilizer'),
@@ -125,12 +156,19 @@ const PurchaseItem = sequelize.define('PurchaseItem', {
         field: 'purchase_id'
     },
     productId: {
+        // Nullable — set when the PO line is for a finished (outsourced) product.
         type: DataTypes.INTEGER,
         field: 'product_id'
     },
     productType: {
         type: DataTypes.ENUM('grocery', 'fertilizer'),
         field: 'product_type'
+    },
+    rawMaterialId: {
+        // Nullable — set when the PO line is for a raw material (ingredient).
+        // Exactly one of productId or rawMaterialId is expected to be present.
+        type: DataTypes.INTEGER,
+        field: 'raw_material_id'
     },
     name: {
         type: DataTypes.STRING(200),
@@ -143,8 +181,17 @@ const PurchaseItem = sequelize.define('PurchaseItem', {
         type: DataTypes.STRING(20)
     },
     quantity: {
-        type: DataTypes.INTEGER,
+        // Decimal so we can order 2.5 kg of coffee beans, etc.
+        type: DataTypes.DECIMAL(14, 3),
         allowNull: false
+    },
+    quantityReceived: {
+        // Runs from 0 up to `quantity` as partial deliveries land.
+        // Drives the PO's deliveryStatus.
+        type: DataTypes.DECIMAL(14, 3),
+        allowNull: false,
+        defaultValue: 0,
+        field: 'quantity_received'
     },
     cost: {
         type: DataTypes.DECIMAL(10, 2),
