@@ -16,7 +16,7 @@ const router = express.Router();
 // @route   GET /api/reports/schedule — current auto-generation time
 router.get('/schedule', auth, async (req, res) => {
   try {
-    res.json({ time: await reportService.getReportTime() });
+    res.json({ time: await reportService.getReportTime(req.user.id) });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -25,7 +25,7 @@ router.get('/schedule', auth, async (req, res) => {
 // @route   PUT /api/reports/schedule — set auto-generation time (HH:MM)
 router.put('/schedule', auth, async (req, res) => {
   try {
-    const time = await reportService.setReportTime(req.body.time);
+    const time = await reportService.setReportTime(req.body.time, req.user.id);
     res.json({ time });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -35,7 +35,7 @@ router.put('/schedule', auth, async (req, res) => {
 // @route   POST /api/reports/generate — { date } or { start, end }
 router.post('/generate', auth, async (req, res) => {
   try {
-    const report = await reportService.generateAndSave(req.body, 'manual');
+    const report = await reportService.generateAndSave(req.body, 'manual', req.user.id);
     res.status(201).json(report);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -46,6 +46,7 @@ router.post('/generate', auth, async (req, res) => {
 router.get('/generated', auth, async (req, res) => {
   try {
     const reports = await DailyReport.findAll({
+      where: { createdBy: req.user.id },
       order: [['created_at', 'DESC']],
       limit: 60
     });
@@ -58,7 +59,7 @@ router.get('/generated', auth, async (req, res) => {
 // @route   GET /api/reports/generated/:id
 router.get('/generated/:id', auth, async (req, res) => {
   try {
-    const report = await DailyReport.findByPk(req.params.id);
+    const report = await DailyReport.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
     if (!report) return res.status(404).json({ message: 'Report not found' });
     res.json(report);
   } catch (error) {
@@ -76,6 +77,7 @@ router.get('/daily', auth, async (req, res) => {
     const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
 
     let where = {
+      createdBy: req.user.id,
       created_at: { [Op.between]: [startOfDay, endOfDay] }
     };
 
@@ -136,6 +138,7 @@ router.get('/monthly', auth, async (req, res) => {
     const endOfMonth = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
 
     let where = {
+      createdBy: req.user.id,
       created_at: { [Op.between]: [startOfMonth, endOfMonth] }
     };
 
@@ -179,7 +182,7 @@ router.get('/stock', auth, async (req, res) => {
 
     if (!shopType || shopType === 'grocery') {
       const groceryProducts = await GroceryProduct.findAll({
-        where: { isActive: true }
+        where: { isActive: true, createdBy: req.user.id }
       });
       products = products.concat(groceryProducts.map(p => ({
         ...p.toJSON(),
@@ -189,7 +192,7 @@ router.get('/stock', auth, async (req, res) => {
 
     if (!shopType || shopType === 'fertilizer') {
       const fertilizerProducts = await FertilizerProduct.findAll({
-        where: { isActive: true }
+        where: { isActive: true, createdBy: req.user.id }
       });
       products = products.concat(fertilizerProducts.map(p => ({
         ...p.toJSON(),
@@ -252,7 +255,10 @@ router.get('/dashboard', auth, async (req, res) => {
     weekAgo.setDate(weekAgo.getDate() - 6);
     const startOfWeek = new Date(weekAgo.getFullYear(), weekAgo.getMonth(), weekAgo.getDate());
 
-    let where = {};
+    // Every dashboard query must stay inside the signed-in account. Without
+    // this base predicate, a newly registered user sees the previous user's
+    // sales, profit, orders, dues, chart, and recent invoices.
+    let where = { createdBy: req.user.id };
     if (shopType) {
       where.shopType = shopType;
     }
@@ -275,9 +281,9 @@ router.get('/dashboard', auth, async (req, res) => {
       for (const item of inv.items) {
         let product;
         if (item.productType === 'grocery') {
-          product = await GroceryProduct.findByPk(item.productId);
+          product = await GroceryProduct.findOne({ where: { id: item.productId, createdBy: req.user.id } });
         } else {
-          product = await FertilizerProduct.findByPk(item.productId);
+          product = await FertilizerProduct.findOne({ where: { id: item.productId, createdBy: req.user.id } });
         }
 
         if (product) {
@@ -306,9 +312,9 @@ router.get('/dashboard', auth, async (req, res) => {
       for (const item of inv.items) {
         let product;
         if (item.productType === 'grocery') {
-          product = await GroceryProduct.findByPk(item.productId);
+          product = await GroceryProduct.findOne({ where: { id: item.productId, createdBy: req.user.id } });
         } else {
-          product = await FertilizerProduct.findByPk(item.productId);
+          product = await FertilizerProduct.findOne({ where: { id: item.productId, createdBy: req.user.id } });
         }
 
         if (product) {
@@ -355,20 +361,20 @@ router.get('/dashboard', auth, async (req, res) => {
     let lowStockCount = 0;
     try {
       if (!shopType || shopType === 'grocery') {
-        const groceryProducts = await GroceryProduct.findAll({ where: { isActive: true } });
+        const groceryProducts = await GroceryProduct.findAll({ where: { isActive: true, createdBy: req.user.id } });
         // Only outsourced items have a meaningful stock number now.
         lowStockCount += groceryProducts
           .filter(p => (p.sourceType || 'own') === 'outsourced')
           .filter(p => p.stock <= p.minStock).length;
       }
       if (!shopType || shopType === 'fertilizer') {
-        const fertilizerProducts = await FertilizerProduct.findAll({ where: { isActive: true } });
+        const fertilizerProducts = await FertilizerProduct.findAll({ where: { isActive: true, createdBy: req.user.id } });
         lowStockCount += fertilizerProducts.filter(p => p.stock <= p.minStock).length;
       }
       // Add raw-material lows across the board.
       try {
         const { RawMaterial } = require('../models/Inventory');
-        const rawLow = await RawMaterial.findAll({ where: { isActive: true } });
+        const rawLow = await RawMaterial.findAll({ where: { isActive: true, createdBy: req.user.id } });
         lowStockCount += rawLow.filter(m => parseFloat(m.currentStock) <= parseFloat(m.minStock)).length;
       } catch { /* raw material tables might not exist yet */ }
     } catch (e) {
@@ -398,8 +404,11 @@ router.get('/dashboard', auth, async (req, res) => {
       halfDays: 0, sickLeaves: 0
     };
     try {
-      const activeStaff = await Staff.findAll({ where: { isActive: true } });
-      const dayRecords = await Attendance.findAll({ where: { date: dateStr } });
+      const activeStaff = await Staff.findAll({ where: { isActive: true, createdBy: req.user.id } });
+      const activeStaffIds = activeStaff.map(s => s.id);
+      const dayRecords = activeStaffIds.length
+        ? await Attendance.findAll({ where: { date: dateStr, staffId: { [Op.in]: activeStaffIds } } })
+        : [];
 
       const byKey = {};
       for (const r of dayRecords) byKey[`${r.staffId}|${r.shift}`] = r.status;
@@ -528,7 +537,10 @@ router.get('/quick-stats', auth, async (req, res) => {
       return res.status(400).json({ message: 'Bad period' });
     }
 
-    const where = { created_at: { [Op.between]: [start, end] } };
+    const where = {
+      createdBy: req.user.id,
+      created_at: { [Op.between]: [start, end] }
+    };
     if (shopType) where.shopType = shopType;
 
     const invoices = await Invoice.findAll({
@@ -544,8 +556,8 @@ router.get('/quick-stats', auth, async (req, res) => {
     for (const inv of invoices) {
       for (const it of inv.items) {
         const prod = it.productType === 'grocery'
-          ? await GroceryProduct.findByPk(it.productId)
-          : await FertilizerProduct.findByPk(it.productId);
+          ? await GroceryProduct.findOne({ where: { id: it.productId, createdBy: req.user.id } })
+          : await FertilizerProduct.findOne({ where: { id: it.productId, createdBy: req.user.id } });
         if (!prod) continue;
         profit += (parseFloat(it.unitPrice) - parseFloat(prod.purchasePrice)) * it.quantity;
       }

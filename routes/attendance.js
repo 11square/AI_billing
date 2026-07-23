@@ -13,8 +13,11 @@ router.get('/', auth, async (req, res) => {
   try {
     const date = req.query.date || new Date().toISOString().slice(0, 10);
 
-    const staff = await Staff.findAll({ where: { isActive: true }, order: [['name', 'ASC']] });
-    const records = await Attendance.findAll({ where: { date } });
+    const staff = await Staff.findAll({ where: { isActive: true, createdBy: req.user.id }, order: [['name', 'ASC']] });
+    const staffIds = staff.map(s => s.id);
+    const records = staffIds.length
+      ? await Attendance.findAll({ where: { date, staffId: { [Op.in]: staffIds } } })
+      : [];
 
     const byKey = {};
     for (const r of records) byKey[`${r.staffId}|${r.shift}`] = r;
@@ -53,8 +56,13 @@ router.post('/', auth, async (req, res) => {
     }
 
     let saved = 0;
+    const allowedStaff = await Staff.findAll({
+      where: { createdBy: req.user.id },
+      attributes: ['id']
+    });
+    const allowedIds = new Set(allowedStaff.map(s => s.id));
     for (const r of records) {
-      if (!r.staffId || !SHIFTS.includes(r.shift)) continue;
+      if (!r.staffId || !allowedIds.has(parseInt(r.staffId)) || !SHIFTS.includes(r.shift)) continue;
       const existing = await Attendance.findOne({
         where: { staffId: r.staffId, date, shift: r.shift }
       });
@@ -88,10 +96,11 @@ router.get('/summary', auth, async (req, res) => {
     const start = `${year}-${pad(month)}-01`;
     const end = `${year}-${pad(month)}-${pad(new Date(year, month, 0).getDate())}`;
 
-    const staff = await Staff.findAll({ where: { isActive: true }, order: [['name', 'ASC']] });
-    const records = await Attendance.findAll({
-      where: { date: { [Op.between]: [start, end] } }
-    });
+    const staff = await Staff.findAll({ where: { isActive: true, createdBy: req.user.id }, order: [['name', 'ASC']] });
+    const staffIds = staff.map(s => s.id);
+    const records = staffIds.length ? await Attendance.findAll({
+      where: { staffId: { [Op.in]: staffIds }, date: { [Op.between]: [start, end] } }
+    }) : [];
 
     const summary = staff.map(s => {
       const mine = records.filter(r => r.staffId === s.id);
@@ -132,6 +141,8 @@ router.get('/staff/:id', auth, async (req, res) => {
     const start = `${year}-${pad(month)}-01`;
     const end = `${year}-${pad(month)}-${pad(new Date(year, month, 0).getDate())}`;
 
+    const staff = await Staff.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
+    if (!staff) return res.status(404).json({ message: 'Staff not found' });
     const records = await Attendance.findAll({
       where: { staffId: req.params.id, date: { [Op.between]: [start, end] } },
       order: [['date', 'ASC'], ['shift', 'ASC']]

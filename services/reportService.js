@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const { Invoice, InvoiceItem, Payment } = require('../models/Invoice');
 const GroceryProduct = require('../models/GroceryProduct');
 const { DailyReport, Setting } = require('../models/Report');
+const User = require('../models/User');
 
 const DEFAULT_REPORT_TIME = '06:00';
 
@@ -10,23 +11,25 @@ const pad = (n) => String(n).padStart(2, '0');
 const localDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 // ---------- settings ----------
-async function getReportTime() {
-  const row = await Setting.findByPk('report_time');
+const reportTimeKey = (userId) => `report_time:${userId}`;
+
+async function getReportTime(userId) {
+  const row = await Setting.findByPk(reportTimeKey(userId));
   return (row && row.value) || DEFAULT_REPORT_TIME;
 }
 
-async function setReportTime(value) {
+async function setReportTime(value, userId) {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
     throw new Error('Time must be in HH:MM (24h) format');
   }
-  await Setting.upsert({ key: 'report_time', value });
+  await Setting.upsert({ key: reportTimeKey(userId), value });
   return value;
 }
 
 // ---------- core summary ----------
-async function computeSummary(start, end) {
+async function computeSummary(start, end, userId) {
   const invoices = await Invoice.findAll({
-    where: { shopType: 'grocery', created_at: { [Op.between]: [start, end] } },
+    where: { shopType: 'grocery', createdBy: userId, created_at: { [Op.between]: [start, end] } },
     include: [{ model: InvoiceItem, as: 'items' }]
   });
 
@@ -47,7 +50,12 @@ async function computeSummary(start, end) {
   // amount collected in period (includes dues cleared on older invoices)
   const payments = await Payment.findAll({
     where: { paymentDate: { [Op.between]: [start, end] } },
-    include: [{ model: Invoice, attributes: ['id', 'shopType', 'paymentStatus'], required: true }]
+    include: [{
+      model: Invoice,
+      attributes: ['id', 'shopType', 'paymentStatus'],
+      where: { createdBy: userId },
+      required: true
+    }]
   });
   const groceryPayments = payments.filter(p => p.Invoice.shopType === 'grocery' && p.Invoice.paymentStatus !== 'cancelled');
   let amountCollected = 0;
@@ -72,7 +80,7 @@ async function computeSummary(start, end) {
   }
 
   const products = await GroceryProduct.findAll({
-    where: { id: [...soldByProduct.keys()].filter(Boolean) }
+    where: { id: [...soldByProduct.keys()].filter(Boolean), createdBy: userId }
   });
   const pmap = new Map(products.map(p => [p.id, p]));
 
@@ -134,7 +142,7 @@ async function computeSummary(start, end) {
 
 // ---------- generate & save ----------
 // opts: { date: 'YYYY-MM-DD' } for a full day, or { start, end } for a custom range
-async function generateAndSave(opts = {}, trigger = 'manual') {
+async function generateAndSave(opts = {}, trigger = 'manual', userId) {
   let start, end, reportDate;
   if (opts.start && opts.end) {
     start = new Date(opts.start);
@@ -150,13 +158,14 @@ async function generateAndSave(opts = {}, trigger = 'manual') {
     reportDate = dateStr;
   }
 
-  const data = await computeSummary(start, end);
+  const data = await computeSummary(start, end, userId);
   const report = await DailyReport.create({
     reportDate,
     periodStart: start,
     periodEnd: end,
     trigger,
-    data
+    data,
+    createdBy: userId
   });
   return report;
 }
@@ -169,18 +178,20 @@ function startScheduler() {
     try {
       const now = new Date();
       const hhmm = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-      const configured = await getReportTime();
-      if (hhmm !== configured) return;
-
       const yesterday = new Date(now);
       yesterday.setDate(yesterday.getDate() - 1);
       const dateStr = localDateStr(yesterday);
-
-      const exists = await DailyReport.findOne({ where: { reportDate: dateStr, trigger: 'auto' } });
-      if (exists) return;
-
-      const report = await generateAndSave({ date: dateStr }, 'auto');
-      console.log(`📄 Auto daily report generated for ${dateStr} (id ${report.id})`);
+      const users = await User.findAll({ attributes: ['id'] });
+      for (const user of users) {
+        const configured = await getReportTime(user.id);
+        if (hhmm !== configured) continue;
+        const exists = await DailyReport.findOne({
+          where: { reportDate: dateStr, trigger: 'auto', createdBy: user.id }
+        });
+        if (exists) continue;
+        const report = await generateAndSave({ date: dateStr }, 'auto', user.id);
+        console.log(`📄 Auto daily report generated for account ${user.id}, ${dateStr} (id ${report.id})`);
+      }
     } catch (err) {
       console.error('Report scheduler error:', err.message);
     }

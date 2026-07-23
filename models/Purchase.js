@@ -28,6 +28,10 @@ const Vendor = sequelize.define('Vendor', {
         type: DataTypes.ENUM('grocery', 'fertilizer'),
         allowNull: false,
         field: 'shop_type'
+    },
+    createdBy: {
+        type: DataTypes.INTEGER,
+        field: 'created_by'
     }
 }, {
     tableName: 'vendors',

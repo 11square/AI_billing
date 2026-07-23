@@ -24,7 +24,7 @@ router.get('/units-catalog', auth, (req, res) => {
 router.get('/', auth, async (req, res) => {
   try {
     const materials = await RawMaterial.findAll({
-      where: { isActive: true },
+      where: { isActive: true, createdBy: req.user.id },
       order: [['name', 'ASC']]
     });
     const enriched = materials.map(m => {
@@ -53,7 +53,8 @@ router.post('/', auth, async (req, res) => {
       unit: (unit || 'unit').trim(),
       currentStock: 0,      // set below via applyMovement so opening balance is logged
       minStock: parseFloat(minStock) || 0,
-      notes: notes || null
+      notes: notes || null,
+      createdBy: req.user.id
     }, { transaction: t });
 
     const opening = parseFloat(currentStock) || 0;
@@ -76,7 +77,7 @@ router.post('/', auth, async (req, res) => {
 // ---- PUT /api/raw-materials/:id (metadata only) ---------------------------
 router.put('/:id', auth, async (req, res) => {
   try {
-    const material = await RawMaterial.findByPk(req.params.id);
+    const material = await RawMaterial.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
     if (!material) return res.status(404).json({ message: 'Not found' });
     const { name, unit, minStock, notes, isActive } = req.body;
     await material.update({
@@ -95,7 +96,7 @@ router.put('/:id', auth, async (req, res) => {
 // ---- DELETE /api/raw-materials/:id — soft delete --------------------------
 router.delete('/:id', auth, async (req, res) => {
   try {
-    const material = await RawMaterial.findByPk(req.params.id);
+    const material = await RawMaterial.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
     if (!material) return res.status(404).json({ message: 'Not found' });
     await material.update({ isActive: false });
     res.json({ message: 'Raw material archived' });
@@ -110,7 +111,10 @@ router.delete('/:id', auth, async (req, res) => {
 router.post('/:id/adjust', auth, async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const material = await RawMaterial.findByPk(req.params.id, { transaction: t });
+    const material = await RawMaterial.findOne({
+      where: { id: req.params.id, createdBy: req.user.id },
+      transaction: t
+    });
     if (!material) { await t.rollback(); return res.status(404).json({ message: 'Not found' }); }
 
     const { changeQty, reason = 'adjust', notes } = req.body;
@@ -145,8 +149,10 @@ router.post('/:id/adjust', auth, async (req, res) => {
 router.get('/:id/history', auth, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 50, 500);
+    const material = await RawMaterial.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
+    if (!material) return res.status(404).json({ message: 'Not found' });
     const rows = await InventoryMovement.findAll({
-      where: { rawMaterialId: req.params.id },
+      where: { rawMaterialId: req.params.id, createdBy: req.user.id },
       order: [['created_at', 'DESC']],
       limit
     });
@@ -165,7 +171,7 @@ router.get('/movements/day', auth, async (req, res) => {
     const start = new Date(y, m - 1, d, 0, 0, 0, 0);
     const end = new Date(y, m - 1, d, 23, 59, 59, 999);
     const rows = await InventoryMovement.findAll({
-      where: { created_at: { [Op.between]: [start, end] } },
+      where: { createdBy: req.user.id, created_at: { [Op.between]: [start, end] } },
       include: [{ model: RawMaterial, as: 'rawMaterial', attributes: ['id', 'name', 'unit'] }],
       order: [['created_at', 'ASC']]
     });

@@ -7,7 +7,7 @@ const { auth } = require('../middleware/auth');
 router.get('/', auth, async (req, res) => {
     try {
         const vendors = await Vendor.findAll({
-            where: { shopType: req.user.activeShop },
+            where: { shopType: req.user.activeShop, createdBy: req.user.id },
             order: [['name', 'ASC']]
         });
 
@@ -21,7 +21,7 @@ router.get('/', auth, async (req, res) => {
 // Get single vendor
 router.get('/:id', auth, async (req, res) => {
     try {
-        const vendor = await Vendor.findByPk(req.params.id);
+        const vendor = await Vendor.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
 
         if (!vendor) {
             return res.status(404).json({ message: 'Vendor not found' });
@@ -49,7 +49,8 @@ router.post('/', auth, async (req, res) => {
             email: email || null,
             address: address || null,
             gstin: gstin || null,
-            shopType: req.user.activeShop
+            shopType: req.user.activeShop,
+            createdBy: req.user.id
         });
 
         res.status(201).json(vendor);
@@ -64,7 +65,7 @@ router.put('/:id', auth, async (req, res) => {
     try {
         const { name, phone, email, address, gstin } = req.body;
 
-        const vendor = await Vendor.findByPk(req.params.id);
+        const vendor = await Vendor.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
         if (!vendor) {
             return res.status(404).json({ message: 'Vendor not found' });
         }
@@ -87,7 +88,7 @@ router.put('/:id', auth, async (req, res) => {
 // Delete vendor
 router.delete('/:id', auth, async (req, res) => {
     try {
-        const vendor = await Vendor.findByPk(req.params.id);
+        const vendor = await Vendor.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
         if (!vendor) {
             return res.status(404).json({ message: 'Vendor not found' });
         }

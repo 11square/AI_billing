@@ -12,8 +12,12 @@ const router = express.Router();
 // ---- GET /api/recipes/product/:productId ----------------------------------
 router.get('/product/:productId', auth, async (req, res) => {
   try {
+    const product = await GroceryProduct.findOne({
+      where: { id: req.params.productId, createdBy: req.user.id }
+    });
+    if (!product) return res.status(404).json({ message: 'Product not found' });
     const rows = await Recipe.findAll({
-      where: { productId: req.params.productId },
+      where: { productId: product.id },
       include: [{ model: RawMaterial, as: 'rawMaterial', attributes: ['id', 'name', 'unit'] }],
       order: [['id', 'ASC']]
     });
@@ -29,7 +33,10 @@ router.get('/product/:productId', auth, async (req, res) => {
 router.put('/product/:productId', auth, async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const product = await GroceryProduct.findByPk(req.params.productId, { transaction: t });
+    const product = await GroceryProduct.findOne({
+      where: { id: req.params.productId, createdBy: req.user.id },
+      transaction: t
+    });
     if (!product) { await t.rollback(); return res.status(404).json({ message: 'Product not found' }); }
 
     const lines = Array.isArray(req.body.lines) ? req.body.lines : [];
@@ -38,7 +45,10 @@ router.put('/product/:productId', auth, async (req, res) => {
     const referencedIds = [...new Set(
       lines.filter(l => l && l.rawMaterialId).map(l => parseInt(l.rawMaterialId))
     )];
-    const materials = await RawMaterial.findAll({ where: { id: referencedIds }, transaction: t });
+    const materials = await RawMaterial.findAll({
+      where: { id: referencedIds, createdBy: req.user.id },
+      transaction: t
+    });
     const matById = new Map(materials.map(m => [m.id, m]));
 
     // Dedup by rawMaterialId (unique index); last write wins.

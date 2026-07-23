@@ -24,7 +24,7 @@ const recipeRoutes = require('./routes/recipes');
 
 const app = express();
 
-// Railway (and most PaaS) sit behind a proxy — trust it so req.ip and
+// Production hosts sit behind a proxy — trust it so req.ip and
 // req.protocol reflect the real client, and cookies with `secure` still work.
 app.set('trust proxy', 1);
 
@@ -70,6 +70,7 @@ const startServer = async () => {
     if (shouldSync) {
       await sequelize.sync({ alter: true });
       console.log('✅ Database schema synced (alter mode)');
+      await require('./services/tenantMigration').backfillLegacyOwnership();
     } else {
       console.log('ℹ️  Skipping schema sync (set DB_SYNC=alter to force)');
     }

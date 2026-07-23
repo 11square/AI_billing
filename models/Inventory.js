@@ -16,7 +16,7 @@ const GroceryProduct = require('./GroceryProduct');
 
 const RawMaterial = sequelize.define('RawMaterial', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  name: { type: DataTypes.STRING(120), allowNull: false, unique: true },
+  name: { type: DataTypes.STRING(120), allowNull: false },
   // Base unit the material is stocked in (g / kg / ml / l / pc / pack ...).
   // Recipes may specify a different unit within the same family and we'll
   // convert at deduction time (see services/units.js).
@@ -39,12 +39,19 @@ const RawMaterial = sequelize.define('RawMaterial', {
     allowNull: false,
     defaultValue: true,
     field: 'is_active'
+  },
+  createdBy: {
+    type: DataTypes.INTEGER,
+    field: 'created_by'
   }
 }, {
   tableName: 'raw_materials',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  indexes: [
+    { unique: true, fields: ['created_by', 'name'] }
+  ]
 });
 
 // One row per (product, raw_material). `quantity` is what's needed to make

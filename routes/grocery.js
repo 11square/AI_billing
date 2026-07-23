@@ -10,7 +10,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const { category, search, lowStock } = req.query;
 
-    let where = { isActive: true };
+    let where = { isActive: true, createdBy: req.user.id };
 
     if (category) {
       where.category = category;
@@ -43,7 +43,7 @@ router.get('/', auth, async (req, res) => {
 // @route   GET /api/grocery/:id
 router.get('/:id', auth, async (req, res) => {
   try {
-    const product = await GroceryProduct.findByPk(req.params.id);
+    const product = await GroceryProduct.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
@@ -57,7 +57,7 @@ router.get('/:id', auth, async (req, res) => {
 router.get('/barcode/:barcode', auth, async (req, res) => {
   try {
     const product = await GroceryProduct.findOne({
-      where: { barcode: req.params.barcode, isActive: true }
+      where: { barcode: req.params.barcode, isActive: true, createdBy: req.user.id }
     });
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
@@ -71,7 +71,7 @@ router.get('/barcode/:barcode', auth, async (req, res) => {
 // @route   POST /api/grocery
 router.post('/', auth, async (req, res) => {
   try {
-    const product = await GroceryProduct.create(req.body);
+    const product = await GroceryProduct.create({ ...req.body, createdBy: req.user.id });
     res.status(201).json(product);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -81,12 +81,13 @@ router.post('/', auth, async (req, res) => {
 // @route   PUT /api/grocery/:id
 router.put('/:id', auth, async (req, res) => {
   try {
-    const product = await GroceryProduct.findByPk(req.params.id);
+    const product = await GroceryProduct.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
 
-    await product.update(req.body);
+    const { createdBy, ...updates } = req.body;
+    await product.update(updates);
     res.json(product);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -97,7 +98,7 @@ router.put('/:id', auth, async (req, res) => {
 // Adds quantity and optionally updates prices
 router.put('/:id/restock', auth, async (req, res) => {
   try {
-    const product = await GroceryProduct.findByPk(req.params.id);
+    const product = await GroceryProduct.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
@@ -139,7 +140,7 @@ router.put('/:id/restock', auth, async (req, res) => {
 // @route   DELETE /api/grocery/:id
 router.delete('/:id', auth, async (req, res) => {
   try {
-    const product = await GroceryProduct.findByPk(req.params.id);
+    const product = await GroceryProduct.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }

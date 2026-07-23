@@ -34,6 +34,10 @@ const Customer = sequelize.define('Customer', {
     type: DataTypes.DECIMAL(12, 2),
     defaultValue: 0,
     field: 'total_credit'
+  },
+  createdBy: {
+    type: DataTypes.INTEGER,
+    field: 'created_by'
   }
 }, {
   tableName: 'customers',

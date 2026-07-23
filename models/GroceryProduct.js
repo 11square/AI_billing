@@ -18,8 +18,7 @@ const GroceryProduct = sequelize.define('GroceryProduct', {
     field: 'name_tamil'
   },
   barcode: {
-    type: DataTypes.STRING(50),
-    unique: true
+    type: DataTypes.STRING(50)
   },
   brand: {
     type: DataTypes.STRING(100)
@@ -87,12 +86,19 @@ const GroceryProduct = sequelize.define('GroceryProduct', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
     field: 'is_active'
+  },
+  createdBy: {
+    type: DataTypes.INTEGER,
+    field: 'created_by'
   }
 }, {
   tableName: 'grocery_products',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  indexes: [
+    { unique: true, fields: ['created_by', 'barcode'] }
+  ]
 });
 
 module.exports = GroceryProduct;

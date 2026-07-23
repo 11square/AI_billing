@@ -30,6 +30,10 @@ const DailyReport = sequelize.define('DailyReport', {
   data: {
     type: DataTypes.JSON,
     allowNull: false
+  },
+  createdBy: {
+    type: DataTypes.INTEGER,
+    field: 'created_by'
   }
 }, {
   tableName: 'daily_reports',

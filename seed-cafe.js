@@ -163,7 +163,7 @@ const seed = async () => {
     console.log(`ℹ️ Menu size: ${MENU.length} items`);
 
     // Admin user
-    const [, created] = await User.findOrCreate({
+    const [admin, created] = await User.findOrCreate({
       where: { email: 'admin@cafe.com' },
       defaults: { name: 'Cafe Admin', email: 'admin@cafe.com', phone: '9876543210', password: 'admin123', role: 'admin', activeShop: 'grocery' }
     });
@@ -172,14 +172,14 @@ const seed = async () => {
     // Menu items
     let added = 0, updated = 0;
     for (const it of MENU) {
-      const existing = await GroceryProduct.findOne({ where: { name: it.name } });
+      const existing = await GroceryProduct.findOne({ where: { name: it.name, createdBy: admin.id } });
       if (existing) {
         const upd = { image: it.image, category: it.category, description: it.description, isActive: true, sourceType: it.sourceType };
         if (it.boq) upd.boq = it.boq; // don't wipe manually entered BOQs
         await existing.update(upd);
         updated++;
       } else {
-        await GroceryProduct.create({ ...it, minStock: 10 });
+        await GroceryProduct.create({ ...it, minStock: 10, createdBy: admin.id });
         added++;
       }
     }
@@ -192,7 +192,10 @@ const seed = async () => {
       { name: 'Rahul Verma', phone: '9823456789', email: 'rahul@example.com' }
     ];
     for (const c of customers) {
-      await Customer.findOrCreate({ where: { phone: c.phone }, defaults: c });
+      await Customer.findOrCreate({
+        where: { phone: c.phone, createdBy: admin.id },
+        defaults: { ...c, createdBy: admin.id }
+      });
     }
     console.log('✅ Sample customers ready');
 
@@ -205,7 +208,10 @@ const seed = async () => {
       { name: 'Rohit Sharma', role: 'Manager', phone: '9700000005', defaultShift: 'both', monthlySalary: 32000, joinDate: '2024-08-05' }
     ];
     for (const s of staff) {
-      await Staff.findOrCreate({ where: { phone: s.phone }, defaults: s });
+      await Staff.findOrCreate({
+        where: { phone: s.phone, createdBy: admin.id },
+        defaults: { ...s, createdBy: admin.id }
+      });
     }
     console.log('✅ Sample staff ready');
 

@@ -10,7 +10,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const { search, hasFarmerDetails } = req.query;
 
-    let where = {};
+    let where = { createdBy: req.user.id };
 
     if (search) {
       where[Op.or] = [
@@ -41,7 +41,8 @@ router.get('/', auth, async (req, res) => {
 // @route   GET /api/customers/:id
 router.get('/:id', auth, async (req, res) => {
   try {
-    const customer = await Customer.findByPk(req.params.id, {
+    const customer = await Customer.findOne({
+      where: { id: req.params.id, createdBy: req.user.id },
       include: [{ model: FarmerDetails, as: 'farmerDetails' }]
     });
     if (!customer) {
@@ -58,7 +59,7 @@ router.post('/', auth, async (req, res) => {
   try {
     const { farmerDetails, ...customerData } = req.body;
 
-    const customer = await Customer.create(customerData);
+    const customer = await Customer.create({ ...customerData, createdBy: req.user.id });
 
     if (farmerDetails) {
       await FarmerDetails.create({
@@ -82,7 +83,7 @@ router.put('/:id', auth, async (req, res) => {
   try {
     const { farmerDetails, ...customerData } = req.body;
 
-    const customer = await Customer.findByPk(req.params.id);
+    const customer = await Customer.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
     if (!customer) {
       return res.status(404).json({ message: 'Customer not found' });
     }
@@ -117,7 +118,7 @@ router.put('/:id', auth, async (req, res) => {
 // @route   DELETE /api/customers/:id
 router.delete('/:id', auth, async (req, res) => {
   try {
-    const customer = await Customer.findByPk(req.params.id);
+    const customer = await Customer.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
     if (!customer) {
       return res.status(404).json({ message: 'Customer not found' });
     }

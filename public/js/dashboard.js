@@ -7,6 +7,7 @@ const Dashboard = {
   // Cached quick-stats values keyed by "period|date" so we don't refetch
   // when the user just re-opens the menu on the same card.
   _quickCache: {},
+  _cacheUserId: null,
 
   PERIOD_LABELS: {
     day: 'Day', week: 'Week', month: 'Month', year: 'Year', fy: 'Financial Year'
@@ -24,6 +25,13 @@ const Dashboard = {
   },
 
   async render(el) {
+    const currentUserId = Api.user()?.id || null;
+    if (this._cacheUserId !== currentUserId) {
+      this._quickCache = {};
+      this._cardPeriod = { profit: 'day', orders: 'day', sales: 'day' };
+      this._selectedDate = null;
+      this._cacheUserId = currentUserId;
+    }
     if (!this._selectedDate) this._selectedDate = this._todayStr();
     this._cleanupMetricHandlers();
     el.innerHTML = '<div class="loader"></div>';
@@ -41,7 +49,7 @@ const Dashboard = {
 
     // Prime the cache with the values the dashboard endpoint already gave us
     // for period=day, so the first render doesn't need a second fetch.
-    const dayKey = `day|${this._selectedDate}`;
+    const dayKey = `${currentUserId}|day|${this._selectedDate}`;
     this._quickCache[dayKey] = {
       sales: d.todaySales, orders: d.todayInvoiceCount, profit: d.todayProfit,
       label: this._prettyDate(this._selectedDate)
@@ -254,7 +262,7 @@ const Dashboard = {
   // Fetch (or reuse cached) quick-stats for the picked period and swap the
   // headline value on that one card.
   async _refreshMetric(card, key, period) {
-    const cacheKey = `${period}|${this._selectedDate}`;
+    const cacheKey = `${Api.user()?.id || 'anonymous'}|${period}|${this._selectedDate}`;
     const valueEl = card.querySelector('[data-role="value"]');
     valueEl.classList.add('metric-loading');
     try {

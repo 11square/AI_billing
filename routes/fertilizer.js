@@ -10,7 +10,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const { category, search, targetCrop, lowStock } = req.query;
 
-    let where = { isActive: true };
+    let where = { isActive: true, createdBy: req.user.id };
 
     if (category) {
       where.category = category;
@@ -51,7 +51,7 @@ router.get('/', auth, async (req, res) => {
 // @route   GET /api/fertilizer/:id
 router.get('/:id', auth, async (req, res) => {
   try {
-    const product = await FertilizerProduct.findByPk(req.params.id);
+    const product = await FertilizerProduct.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
@@ -65,7 +65,7 @@ router.get('/:id', auth, async (req, res) => {
 router.get('/barcode/:barcode', auth, async (req, res) => {
   try {
     const product = await FertilizerProduct.findOne({
-      where: { barcode: req.params.barcode, isActive: true }
+      where: { barcode: req.params.barcode, isActive: true, createdBy: req.user.id }
     });
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
@@ -79,7 +79,7 @@ router.get('/barcode/:barcode', auth, async (req, res) => {
 // @route   POST /api/fertilizer
 router.post('/', auth, async (req, res) => {
   try {
-    const product = await FertilizerProduct.create(req.body);
+    const product = await FertilizerProduct.create({ ...req.body, createdBy: req.user.id });
     res.status(201).json(product);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -89,12 +89,13 @@ router.post('/', auth, async (req, res) => {
 // @route   PUT /api/fertilizer/:id
 router.put('/:id', auth, async (req, res) => {
   try {
-    const product = await FertilizerProduct.findByPk(req.params.id);
+    const product = await FertilizerProduct.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
 
-    await product.update(req.body);
+    const { createdBy, ...updates } = req.body;
+    await product.update(updates);
     res.json(product);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -105,7 +106,7 @@ router.put('/:id', auth, async (req, res) => {
 // Adds quantity and optionally updates prices
 router.put('/:id/restock', auth, async (req, res) => {
   try {
-    const product = await FertilizerProduct.findByPk(req.params.id);
+    const product = await FertilizerProduct.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
@@ -147,7 +148,7 @@ router.put('/:id/restock', auth, async (req, res) => {
 // @route   DELETE /api/fertilizer/:id
 router.delete('/:id', auth, async (req, res) => {
   try {
-    const product = await FertilizerProduct.findByPk(req.params.id);
+    const product = await FertilizerProduct.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }

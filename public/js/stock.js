@@ -151,11 +151,13 @@ const Stock = {
         <td><b>${Ui.fmt(po.grandTotal)}</b></td>
         <td>${deliveryChip(po.deliveryStatus || 'pending')}</td>
         <td><span class="badge ${po.status === 'paid' ? 'paid' : po.status === 'partial' ? 'partial' : 'unpaid'}">${po.status}</span></td>
-        <td style="text-align:right;white-space:nowrap">
+        <td>
+          <div class="po-actions">
           <button class="btn btn-ghost btn-sm" data-act="view" data-id="${po.id}">View</button>
           ${notFullyReceived ? `<button class="btn btn-green btn-sm" data-act="receive" data-id="${po.id}">📦 Receive</button>` : ''}
           ${po.status !== 'paid' ? `<button class="btn btn-ghost btn-sm" data-act="paid" data-id="${po.id}">Mark Paid</button>` : ''}
           <button class="btn btn-danger btn-sm" data-act="del" data-id="${po.id}">🗑</button>
+          </div>
         </td>
       </tr>`;
     }).join('');
@@ -166,8 +168,8 @@ const Stock = {
         <div class="spacer"></div>
         <button class="btn btn-primary" id="po-new"><span data-icon="plus"></span> New Purchase Order</button>
       </div>
-      <div class="card" style="padding:8px 6px">
-        ${this.purchases.length ? `<table class="tbl"><thead><tr><th>PO</th><th>Vendor</th><th>Ordered</th><th>Expected</th><th>Received</th><th>Items</th><th>Total</th><th>Delivery</th><th>Payment</th><th style="text-align:right">Actions</th></tr></thead><tbody>${rows}</tbody></table>`
+      <div class="card" style="padding:8px 6px;overflow:hidden">
+        ${this.purchases.length ? `<div class="table-scroll"><table class="tbl po-table"><thead><tr><th>PO</th><th>Vendor</th><th>Ordered</th><th>Expected</th><th>Received</th><th>Items</th><th>Total</th><th>Delivery</th><th>Payment</th><th style="text-align:right">Actions</th></tr></thead><tbody>${rows}</tbody></table></div>`
         : '<div class="empty-state"><div class="big">📝</div><h3>No purchase orders yet</h3><p>Create a PO to request raw materials or outsourced products from a supplier</p></div>'}
       </div>`;
     Ui.hydrateIcons(box);

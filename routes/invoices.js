@@ -29,7 +29,7 @@ async function applyRecipeMovement({ invoice, items, direction, userId, transact
 
   // Fetch products to filter down to own-source only.
   const products = await GroceryProduct.findAll({
-    where: { id: productIds }, transaction
+    where: { id: productIds, createdBy: userId }, transaction
   });
   const ownProductIds = products.filter(p => (p.sourceType || 'own') === 'own').map(p => p.id);
   if (!ownProductIds.length) return;
@@ -48,7 +48,7 @@ async function applyRecipeMovement({ invoice, items, direction, userId, transact
 
   // Preload materials so unit conversion + stock write don't need refetches.
   const rawIds = [...new Set(recipes.map(r => r.rawMaterialId))];
-  const materials = await RawMaterial.findAll({ where: { id: rawIds }, transaction });
+  const materials = await RawMaterial.findAll({ where: { id: rawIds, createdBy: userId }, transaction });
   const matById = new Map(materials.map(m => [m.id, m]));
 
   // Aggregate consumption per raw material (in the material's own unit).
@@ -111,7 +111,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const { shopType, startDate, endDate, paymentStatus } = req.query;
 
-    let where = {};
+    let where = { createdBy: req.user.id };
 
     if (shopType) {
       where.shopType = shopType;
@@ -149,7 +149,8 @@ router.get('/', auth, async (req, res) => {
 // @route   GET /api/invoices/:id
 router.get('/:id', auth, async (req, res) => {
   try {
-    const invoice = await Invoice.findByPk(req.params.id, {
+    const invoice = await Invoice.findOne({
+      where: { id: req.params.id, createdBy: req.user.id },
       include: [
         { model: InvoiceItem, as: 'items' },
         { model: Payment, as: 'payments' }
@@ -172,6 +173,14 @@ router.post('/', auth, async (req, res) => {
 
   try {
     const { shopType, customerId, customerName, customerPhone, items, discount, payments, notes } = req.body;
+
+    if (customerId) {
+      const ownedCustomer = await Customer.findOne({
+        where: { id: customerId, createdBy: req.user.id },
+        transaction: t
+      });
+      if (!ownedCustomer) throw new Error('Customer not found for this account');
+    }
 
     // Calculate totals (GST removed — grandTotal = subTotal - discount)
     let subTotal = 0;
@@ -237,16 +246,24 @@ router.post('/', auth, async (req, res) => {
       // Own-source items get their raw materials deducted via
       // applyRecipeMovement below, and don't carry a physical stock count.
       if (shopType === 'grocery') {
-        const prod = await GroceryProduct.findByPk(item.productId, { transaction: t });
+        const prod = await GroceryProduct.findOne({
+          where: { id: item.productId, createdBy: req.user.id },
+          transaction: t
+        });
+        if (!prod) throw new Error('Product not found for this account');
         if (prod && (prod.sourceType || 'own') !== 'own') {
           await GroceryProduct.decrement('stock', {
             by: item.quantity,
-            where: { id: item.productId },
+            where: { id: item.productId, createdBy: req.user.id },
             transaction: t
           });
         }
       } else {
-        const product = await FertilizerProduct.findByPk(item.productId, { transaction: t });
+        const product = await FertilizerProduct.findOne({
+          where: { id: item.productId, createdBy: req.user.id },
+          transaction: t
+        });
+        if (!product) throw new Error('Product not found for this account');
         if (product) {
           // Check for loose sale
           // Assuming product.unit is the "Bag" unit (e.g. 'Bag', 'Box') and item.unit is 'kg' or 'L'
@@ -308,14 +325,14 @@ router.post('/', auth, async (req, res) => {
     if (customerId) {
       await Customer.increment('totalPurchases', {
         by: grandTotal,
-        where: { id: customerId },
+        where: { id: customerId, createdBy: req.user.id },
         transaction: t
       });
 
       if (paymentStatus !== 'paid') {
         await Customer.increment('totalCredit', {
           by: grandTotal - paidAmount,
-          where: { id: customerId },
+          where: { id: customerId, createdBy: req.user.id },
           transaction: t
         });
       }
@@ -343,7 +360,9 @@ router.post('/:id/payment', auth, async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    const invoice = await Invoice.findByPk(req.params.id);
+    const invoice = await Invoice.findOne({
+      where: { id: req.params.id, createdBy: req.user.id }
+    });
     if (!invoice) {
       return res.status(404).json({ message: 'Invoice not found' });
     }
@@ -374,7 +393,7 @@ router.post('/:id/payment', auth, async (req, res) => {
     if (invoice.customerId) {
       await Customer.decrement('totalCredit', {
         by: amount,
-        where: { id: invoice.customerId },
+        where: { id: invoice.customerId, createdBy: req.user.id },
         transaction: t
       });
     }
@@ -400,7 +419,8 @@ router.post('/:id/cancel', auth, async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    const invoice = await Invoice.findByPk(req.params.id, {
+    const invoice = await Invoice.findOne({
+      where: { id: req.params.id, createdBy: req.user.id },
       include: [{ model: InvoiceItem, as: 'items' }]
     });
 
@@ -416,16 +436,22 @@ router.post('/:id/cancel', auth, async (req, res) => {
     // restored below via applyRecipeMovement (raw-material tier).
     for (const item of invoice.items) {
       if (invoice.shopType === 'grocery') {
-        const prod = await GroceryProduct.findByPk(item.productId, { transaction: t });
+        const prod = await GroceryProduct.findOne({
+          where: { id: item.productId, createdBy: req.user.id },
+          transaction: t
+        });
         if (prod && (prod.sourceType || 'own') !== 'own') {
           await GroceryProduct.increment('stock', {
             by: item.quantity,
-            where: { id: item.productId },
+            where: { id: item.productId, createdBy: req.user.id },
             transaction: t
           });
         }
       } else {
-        const product = await FertilizerProduct.findByPk(item.productId, { transaction: t });
+        const product = await FertilizerProduct.findOne({
+          where: { id: item.productId, createdBy: req.user.id },
+          transaction: t
+        });
         if (product) {
           if (product.isLooseEnabled && item.unit !== product.unit) {
             await product.increment('looseStock', { by: item.quantity, transaction: t });
@@ -446,7 +472,7 @@ router.post('/:id/cancel', auth, async (req, res) => {
     if (invoice.customerId) {
       await Customer.decrement('totalPurchases', {
         by: invoice.grandTotal,
-        where: { id: invoice.customerId },
+        where: { id: invoice.customerId, createdBy: req.user.id },
         transaction: t
       });
 
@@ -455,7 +481,7 @@ router.post('/:id/cancel', auth, async (req, res) => {
         const creditAmount = invoice.grandTotal - invoice.paidAmount;
         await Customer.decrement('totalCredit', {
           by: creditAmount,
-          where: { id: invoice.customerId },
+          where: { id: invoice.customerId, createdBy: req.user.id },
           transaction: t
         });
       }

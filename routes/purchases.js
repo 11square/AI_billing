@@ -12,7 +12,7 @@ const sequelize = require('../config/database');
 router.get('/', auth, async (req, res) => {
     try {
         const purchases = await Purchase.findAll({
-            where: { shopType: req.user.activeShop },
+            where: { shopType: req.user.activeShop, createdBy: req.user.id },
             include: [
                 { model: PurchaseItem, as: 'items' },
                 { model: Vendor, as: 'vendor' },
@@ -31,7 +31,8 @@ router.get('/', auth, async (req, res) => {
 // Get single purchase
 router.get('/:id', auth, async (req, res) => {
     try {
-        const purchase = await Purchase.findByPk(req.params.id, {
+        const purchase = await Purchase.findOne({
+            where: { id: req.params.id, createdBy: req.user.id },
             include: [
                 { model: PurchaseItem, as: 'items' },
                 { model: Vendor, as: 'vendor' },
@@ -76,6 +77,14 @@ router.post('/', auth, async (req, res) => {
             deliveryStatus
         } = req.body;
 
+        if (vendorId) {
+            const ownedVendor = await Vendor.findOne({
+                where: { id: vendorId, createdBy: req.user.id },
+                transaction: t
+            });
+            if (!ownedVendor) throw new Error('Vendor not found for this account');
+        }
+
         // Create purchase — NOTE: this is a REQUEST to the supplier and does
         // NOT touch inventory. Stock only moves when goods are physically
         // received via POST /api/purchases/:id/receive (see below).
@@ -106,6 +115,21 @@ router.post('/', auth, async (req, res) => {
         // until goods are received.
         if (items && items.length > 0) {
             for (const item of items) {
+                if (item.rawMaterialId) {
+                    const material = await RawMaterial.findOne({
+                        where: { id: item.rawMaterialId, createdBy: req.user.id },
+                        transaction: t
+                    });
+                    if (!material) throw new Error('Raw material not found for this account');
+                }
+                if (item.productId) {
+                    const Model = req.user.activeShop === 'grocery' ? GroceryProduct : FertilizerProduct;
+                    const product = await Model.findOne({
+                        where: { id: item.productId, createdBy: req.user.id },
+                        transaction: t
+                    });
+                    if (!product) throw new Error('Product not found for this account');
+                }
                 await PurchaseItem.create({
                     purchaseId: purchase.id,
                     productId: item.productId || null,
@@ -148,7 +172,7 @@ router.post('/', auth, async (req, res) => {
 router.patch('/:id/status', auth, async (req, res) => {
     try {
         const { status, deliveryStatus } = req.body;
-        const purchase = await Purchase.findByPk(req.params.id);
+        const purchase = await Purchase.findOne({ where: { id: req.params.id, createdBy: req.user.id } });
         if (!purchase) return res.status(404).json({ message: 'Purchase not found' });
 
         const updates = {};
@@ -179,7 +203,8 @@ router.patch('/:id/status', auth, async (req, res) => {
 router.post('/:id/receive', auth, async (req, res) => {
     const t = await sequelize.transaction();
     try {
-        const purchase = await Purchase.findByPk(req.params.id, {
+        const purchase = await Purchase.findOne({
+            where: { id: req.params.id, createdBy: req.user.id },
             include: [{ model: PurchaseItem, as: 'items' }],
             transaction: t
         });
@@ -214,7 +239,10 @@ router.post('/:id/receive', auth, async (req, res) => {
 
             // Apply the stock movement per line type.
             if (item.rawMaterialId) {
-                const material = await RawMaterial.findByPk(item.rawMaterialId, { transaction: t });
+                const material = await RawMaterial.findOne({
+                    where: { id: item.rawMaterialId, createdBy: req.user.id },
+                    transaction: t
+                });
                 if (!material) { await t.rollback(); return res.status(400).json({ message: `Raw material for line "${item.name}" was deleted` }); }
                 await applyMovement({
                     material, changeQty: incoming, reason: 'stock_in',
@@ -224,7 +252,7 @@ router.post('/:id/receive', auth, async (req, res) => {
             } else if (item.productId) {
                 const Model = purchase.shopType === 'grocery' ? GroceryProduct : FertilizerProduct;
                 await Model.increment('stock', {
-                    by: incoming, where: { id: item.productId }, transaction: t
+                    by: incoming, where: { id: item.productId, createdBy: req.user.id }, transaction: t
                 });
             }
 
@@ -266,7 +294,8 @@ router.post('/:id/receive', auth, async (req, res) => {
 router.delete('/:id', auth, async (req, res) => {
     const t = await sequelize.transaction();
     try {
-        const purchase = await Purchase.findByPk(req.params.id, {
+        const purchase = await Purchase.findOne({
+            where: { id: req.params.id, createdBy: req.user.id },
             include: [{ model: PurchaseItem, as: 'items' }],
             transaction: t
         });

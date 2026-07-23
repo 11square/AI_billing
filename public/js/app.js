@@ -76,6 +76,11 @@ const App = {
   },
 
   logout() {
+    if (window.Dashboard) {
+      Dashboard._quickCache = {};
+      Dashboard._cacheUserId = null;
+      Dashboard._selectedDate = null;
+    }
     Api.clearSession();
     this.showLogin();
   },
